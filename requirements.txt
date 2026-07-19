@@ -1,0 +1,10 @@
+pandas
+numpy
+datasets
+sentence-transformers
+faiss-cpu
+transformers
+keybert
+scikit-learn
+torch
+jupyterlab
