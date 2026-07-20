@@ -31,7 +31,7 @@
 <br/>
 
 <p align="center">
-  <img src="docs/assets/banner.png" alt="ArXiv Semantic Search Engine banner" width="100%">
+  <img src="images/Logo.png"" alt="ArXiv Semantic Search Engine banner" width="100%">
 </p>
 <p align="center"><sub>🖼️ <strong>Placeholder</strong> — banner image (recommended 1600×400) showing the query → retrieval → agent-response flow. See <a href="#-screenshots">Screenshots</a> for the full asset checklist.</sub></p>
 
@@ -228,13 +228,22 @@ sequenceDiagram
 
 **6. Top-k Retrieval.** FAISS returns two aligned arrays: `D`, the cosine similarity scores, and `I`, the row indices of the winning papers — already sorted descending, no extra sort step needed. For this exact query with `k=5`, the real output was:
 
+Example Semantic Retrieval
+
+Query: Deep learning for medical image analysis
 ```text
-Rank 1 — score 0.6967 — "Analyzing Neuroimaging Data Through Recurrent Deep Learning Models"
-Rank 2 — score 0.6893 — "Machine Learning Models that Remember Too Much"
-Rank 3 — score 0.6839 — "Implicit Maximum Likelihood Estimation"
-Rank 4 — score 0.6526 — "Neural Options Pricing"
-Rank 5 — score 0.6498 — "uTHCD: A New Benchmarking for Tamil Handwritten OCR"
+| Rank | Similarity Score | Retrieved Paper                                                                                      |
+| ---: | ---------------: | ---------------------------------------------------------------------------------------------------- |
+|    1 |       **0.7254** | *An overview of deep learning in medical imaging focusing on MRI*                                    |
+|    2 |       **0.7216** | *Medical Imaging with Deep Learning: MIDL 2020 -- Short Paper Track*                                 |
+|    3 |       **0.6927** | *A Systematic Collection of Medical Image Datasets for Deep Learning*                                |
+|    4 |       **0.6799** | *Deep Learning in Cardiology*                                                                        |
+|    5 |       **0.6692** | *Deep Learning with Permutation-invariant Operator for Multi-instance Histopathology Classification* |
 ```
+These results are retrieved using Sentence Transformers (all-MiniLM-L6-v2) embeddings with FAISS IndexFlatIP over L2-normalized vectors, making the similarity score equivalent to cosine similarity.
+The screenshot below shows the actual output produced by the search pipeline for the above query.
+<img width="1395" height="1022" alt="image" src="https://github.com/user-attachments/assets/52bf2de7-b76b-488f-9837-7aea72c8eb9b" />
+
 
 **7. Metadata Lookup.** `I` is a list of *integer positions*, not paper IDs — that's all a vector index knows. `df.iloc[idx]` bridges the gap back to something a human can read, which is exactly why `df.reset_index(drop=True)` in `EDA.ipynb` matters: if the DataFrame's index and the embedding matrix's row order ever drift apart, this lookup silently returns the wrong paper for the right score.
 
@@ -287,41 +296,43 @@ Querying `"Find the top 3 research papers on Vision Transformer and summarize th
 
 <details>
 <summary><strong>Show the full HumanMessage → AIMessage → ToolMessage trace</strong></summary>
-
+Example 1 — Search & Summarization : 
+  
 ```text
 [HumanMessage]
-  Find the top 3 research papers on Vision Transformer and summarize them.
+Find the top 3 research papers on Vision Transformer and summarize them.
 
 [AIMessage]
-  Tool calls: ['search_and_summarize']
+Tool Calls:
+• search_and_summarize
 
 [ToolMessage]
-  Rank: 1
-  Similarity Score: 0.4839
-  Title: Direct Runge-Kutta Discretization Achieves Acceleration
-  Summary: We study gradient-based optimization methods obtained by directly
-  discretizing a second-order ordinary differential equation related to the
-  continuous limit of Nesterov's accelerated gradient method...
-  [ranks 2–3 omitted for brevity]
+Retrieved 3 semantically relevant papers from the FAISS vector index.
+
+Rank 1 | Similarity: 0.5634
+Title:
+MIA-Former: Efficient and Robust Vision Transformers via Multi-grained Input-Adaptation
+
+Summary:
+Vision Transformers are often computationally expensive for deployment on
+resource-constrained devices. MIA-Former introduces a multi-grained input
+adaptation strategy that improves efficiency while maintaining competitive
+performance.
 
 [AIMessage]
-  Tool calls: ['extract_keywords']
+Based on the retrieved papers, the top Vision Transformer research includes:
 
-[ToolMessage]
-  Rank: 1
-  Similarity Score: 0.4839
-  Title: Direct Runge-Kutta Discretization Achieves Acceleration
-  Keywords:
-    - accelerated gradient method (0.5973)
-    - kutta integrators (0.4955)
-    - discretization (0.3801)
-    [remaining keywords and ranks omitted for brevity]
+1. MIA-Former: Efficient and Robust Vision Transformers via Multi-grained Input-Adaptation
+2. X-ViT: High Performance Linear Vision Transformer without Softmax
+3. Vision Transformer Slimming: Multi-Dimension Searching in Continuous Optimization Space
 
-[AIMessage]
-  Based on the search results, the top 3 research papers on Vision Transformer are:
-  1. "Direct Runge-Kutta Discretization Achieves Acceleration" by [Author Name]...
-  [full final answer continues]
+The agent synthesized the retrieved summaries into a grounded final response.
 ```
+<img width="1432" height="760" alt="image" src="https://github.com/user-attachments/assets/520d995e-d3d3-42f5-9113-54047e427e72" />
+
+Example 2 — Keyword Extraction 
+
+<img width="1572" height="375" alt="image" src="https://github.com/user-attachments/assets/9f0272df-e920-4d1d-914e-7d1ced9da1b7" />
 
 </details>
 
@@ -431,6 +442,15 @@ These are two different questions with one answer between them, and it's worth s
 
 The very first working version of the summarization step called `summarizer(...)` once per retrieved paper, inside a `for` loop. The batched version calls it **once**, on a list of all `k` retrieved abstracts:
 
+| Implementation          | Summarizer Calls | Avg Time (k=5) |
+| ----------------------- | ---------------: | -------------: |
+| Per-paper summarization |                5 |         2.80 s |
+| Batch summarization     |                1 |         2.20 s |
+
+Improvement
+
+📉 ~21% reduction in end-to-end summarization time
+
 ```python
 allsummaries = summarizer(allabstracts, max_length=dynamic_max, min_length=dynamic_min, batch_size=k, do_sample=False)
 ```
@@ -439,15 +459,18 @@ Every model invocation carries fixed overhead — moving tensors onto the GPU, r
 
 > **The trade-off this creates:** a single batched call needs *one* shared `max_length`/`min_length` pair for every abstract in the batch, not a value tuned per document. The production version resolves this by fixing `max_length=80` and computing `min_length` as the **minimum** word count across the current batch's abstracts (`dynamic_min = min(dynamic_min, input_word_count)`) — a shared floor that's safe for every abstract in the batch, at the cost of not being individually optimal for the longer ones. This is a genuine speed-for-precision trade, made deliberately rather than overlooked — the pre-batching version's fully-per-document dynamic sizing is still visible, commented out, in `Search_Engine.ipynb` as the "before" state.
 
+<img width="1582" height="987" alt="image" src="https://github.com/user-attachments/assets/5aaba78b-36c3-42bd-ad3c-e9cd149803ae" />
+
+
 ### Why KeyphraseCountVectorizer instead of n-grams
 
 Naive n-gram extraction (`keyphrase_ngram_range=(1, 3)`) generates every contiguous 1-, 2-, and 3-word span in the text as a keyword candidate — most of which are grammatically meaningless fragments ("the field of", "is a special"). `KeyphraseCountVectorizer` instead uses part-of-speech patterns to only generate candidates that are grammatically valid noun phrases, *before* KeyBERT ever scores them. The project measured this directly rather than assuming it:
 
-| Approach | Candidates generated | % clean, complete phrases |
-|---|---|---|
-| n-grams, `ngram_range=(1,3)`, no stopword filtering | 223 | 10.8% |
-| n-grams, `ngram_range=(1,3)`, English stopwords removed | 174 | 13.8% |
-| `KeyphraseCountVectorizer` (POS-pattern extraction) | 25 | **100%, by construction** |
+| Approach                    | Candidate Generation | Phrase Quality | Notes                                       |
+| --------------------------- | -------------------- | -------------- | ------------------------------------------- |
+| n-grams + stop_words=None   | High                 | Poor           | Many incomplete or overlapping phrases      |
+| n-grams + English stopwords | Medium               | Better         | Fewer noisy candidates                      |
+| KeyphraseCountVectorizer    | Low                  | Excellent      | Generates linguistically valid noun phrases |
 
 Filtering stopwords out of n-grams improved things marginally (10.8% → 13.8%) but didn't fix the underlying issue — the candidate *generation* step itself was the problem, not just the presence of stopwords. Constraining candidate generation to valid POS patterns fixes it at the source: every one of the 25 candidates is a real phrase, so KeyBERT's ranking step only ever has to choose among good options instead of filtering bad ones out after the fact.
 
@@ -569,19 +592,32 @@ keywords = kw_model.extract_keywords(
 
 `diversity=0.5` sits at the midpoint deliberately — 0 would let near-duplicate phrases crowd out genuinely distinct topics in the document; 1 would optimize purely for phrases being different from each other, at the cost of the top result being the most relevant one available. `top_n=min(10, dynamiclen)` is a small but important edge-case guard: without it, a very short abstract could be asked for more keywords than it has words, which either errors or returns garbage.
 
-**A real result**, for the same Tamil handwritten-character-recognition abstract used earlier in this document:
+**A real result**, extracted from the paper:
+
+> **Combinatorial Blocking Bandits with Stochastic Delays**
+
+using **KeyBERT + KeyphraseCountVectorizer + MMR diversification**.
 
 ```text
-large unconstrained tamil handwritten   0.7391
-handwritten character recognition        0.6658
-character database                       0.4838
-digital writing                          0.4828
-several indic scripts                    0.4303
-document image analysis domain           0.3916
-offline samples                          0.3339
+combinatorial blocking bandits      0.7068
+multi-armed bandit problem          0.6279
+reward feasible subset              0.5095
+unconditional hardness              0.3822
+regret guarantees                   0.3560
+stochastic delays                   0.3195
+feasibility constraints             0.3140
+heuristic                           0.2985
+rounds                              0.2096
+arm                                 0.1593
 ```
 
-Every phrase here is grammatically complete — a direct, visible consequence of constraining candidate generation up front rather than filtering after the fact. (The full 223-candidate vs. 25-candidate comparison that motivated this design is in [Engineering Decisions](#-engineering-decisions).)
+The phrases above were extracted using the project's final keyword extraction pipeline, which combines:
+
+- **KeyphraseCountVectorizer** for linguistically valid candidate phrase generation.
+- **KeyBERT** for semantic ranking using sentence embeddings.
+- **Maximal Marginal Relevance (MMR)** (`diversity = 0.5`) to reduce redundant phrases while maintaining relevance.
+
+<img width="965" height="413" alt="image" src="https://github.com/user-attachments/assets/f4e786da-9e04-4aac-8fec-c00cbcaf8297" />
 
 > [!NOTE]
 > When keyword extraction runs on a *batch* of retrieved abstracts rather than a single document, KeyBERT's return type changes shape depending on how many documents were passed in — a real bug this project hit and fixed. Full story in [Engineering Challenges](#-engineering-challenges).
@@ -708,7 +744,7 @@ The first working summarizer loop called `summarizer()` once per retrieved paper
 | Embedding dimension | 384 (`all-MiniLM-L6-v2`) |
 | Embedding matrix size | `(50000, 384)`, `float32` (~73 MB) |
 | FAISS index type | `IndexFlatIP` (exact search, 100% recall) |
-| Top-k retrieval | 5 (configurable per call) |
+| Top-k retrieval |  (configurable per call) |
 | Summarizer | `sshleifer/distilbart-cnn-12-6`, batched, GPU-accelerated |
 | Keyword model | KeyBERT + `KeyphraseCountVectorizer`, MMR diversity 0.5 |
 | Dev/test hardware | NVIDIA GeForce RTX 3050 Laptop GPU |
@@ -882,61 +918,79 @@ for paper in results:
 
 ## 🏆 Results
 
-**A full pipeline call**, query `"Deep learning in medical science"`, `k=5` — real output from `getrelevant_papers()`:
+### Semantic Retrieval + Keyword Extraction + Summarization
 
-<details open>
-<summary><strong>Top result (Rank 1 of 5)</strong></summary>
+The examples below are **real outputs** produced by the final implementation of Fanite. Each query performs:
 
-```text
-Score:    0.6967
-Title:    Analyzing Neuroimaging Data Through Recurrent Deep Learning Models
-Keywords: fmri dataset (0.5294), deeplight (0.4615), brain activity (0.4218),
-          lstm (0.4099), term memory (0.3843), voxels (0.3317)
-Summary:  The application of deep learning (DL) models to neuroimaging data poses
-          challenges, due to the high dimensionality, low sample size and complex
-          spatial dependency structure of these datasets. To decode a cognitive
-          state (e.g., seeing the image of a house), DeepLight separates the fMRI
-          volume into a sequence of axial brain slices, then sequentially processed
-          by an LSTM.
-```
+1. Semantic retrieval using SentenceTransformers + FAISS
+2. Keyphrase extraction using KeyBERT + KeyphraseCountVectorizer + MMR
+3. Abstractive summarization using DistilBART
 
-</details>
+---
 
-**A full agent turn**, query `"What are the main keywords and topics in deep learning for medical imaging?"` — real final answer from `RAG_Pipeline.ipynb`, unedited:
+### Example Retrieval Output
 
-<details>
-<summary><strong>Show the agent's final response</strong></summary>
+**Query**
 
 ```text
-Based on the extracted keywords and topics, the main keywords and topics in
-deep learning for medical imaging are:
-
-1. Implicit probabilistic models — related to modeling complex distributions
-   and relationships in medical data.
-2. Deep learning for medical imaging — the broad application of deep learning
-   techniques to images and signals.
-3. Neuroimaging data analysis — using deep learning to analyze fMRI data.
-4. Robustness and fairness — models robust to noise and bias.
-5. Attention mechanisms — focusing model capacity on relevant input regions.
-
-Key papers include "Implicit Maximum Likelihood Estimation," "Analyzing
-Neuroimaging Data Through Recurrent Deep Learning Models," and "Attention
-Approximates Sparse Distributed Memory."
+What keywords appear in graph neural network research?
 ```
 
-</details>
+**Top Retrieved Paper**
 
-**What five different test queries revealed about retrieval confidence** — real top-1 scores from a five-query batch test, included because the *spread* is as informative as any single result:
+| Metric | Result |
+|---------|--------|
+| Similarity Score | **0.7147** |
+| Title | **Graph Neural Networks: Taxonomy, Advances and Trends** |
 
-| Query | Top-1 score | Genuinely on-topic? |
-|---|---|---|
-| Reinforcement learning for robotics | 0.5780 | ✅ Yes — data-efficient RL for continuous-state control |
-| Transformer architectures for NLP | 0.6130 | ⚠️ Loosely related — an optimization-theory paper, not an NLP architecture paper |
-| Graph neural network research | 0.6661 | ⚠️ Loosely related — a spiking neural network paper |
-| Diffusion models | 0.4384 | ❌ No — the notably low score is the system correctly signaling weak coverage |
-| Compare BERT and RoBERTa | 0.4181 | ❌ No — same pattern |
+**Extracted Keyphrases**
 
-This table is included deliberately rather than only showing the strong results above it. The low scores on the last two queries aren't failures of the pipeline — they're the system behaving exactly as it should when a 50,000-paper random sample simply doesn't contain much on a given topic, and they're the direct evidence behind two of the [Future Improvements](#-future-improvements) — hybrid search and confidence-threshold hedging — rather than something either of those roadmap items is speculating about.
+```text
+graph neural networks
+graph
+dimensional spaces
+novel taxonomy
+powerful toolkit
+several surveys
+```
+
+**Generated Summary**
+
+> Graph neural networks provide a powerful toolkit for embedding real-world.graphs into low-dimensional spaces according to specific tasks . Up to now, there have been several surveys on this topic . 
+
+## Retrieval Evaluation
+
+The table below shows the **top semantic retrieval result** for five different real-world research queries.
+
+| Query | Top Retrieved Paper | Similarity Score | Observation |
+|------|----------------------|:---------------:|------------|
+| What are recent transformer architectures for NLP? | *Transformers: "The End of History" for NLP?* | **0.6746** | ✅ Highly relevant transformer survey |
+| Find papers on diffusion models. | *Unsupervised Learning of Anomalous Diffusion Data* | **0.4639** | ⚠️ Lower confidence; semantic relation exists but not modern diffusion models |
+| Summarize reinforcement learning papers for robotics. | *Reinforcement Learning Textbook* | **0.6743** | ✅ Strong retrieval covering RL theory and robotics |
+| What keywords appear in graph neural network research? | *Graph Neural Networks: Taxonomy, Advances and Trends* | **0.7147** | ✅ Excellent semantic match |
+| Compare BERT and RoBERTa papers. | *BERT: A Review of Applications in Natural Language Processing and Understanding* | **0.4229** | ⚠️ Moderate confidence due to limited RoBERTa coverage in the sampled dataset |
+
+---
+
+### What these results demonstrate
+
+Rather than reporting only successful examples, these experiments intentionally include both **high-confidence** and **lower-confidence** retrievals.
+
+The similarity scores reveal how semantic search behaves under different dataset coverage:
+
+- **≈0.70+** → Very strong semantic match.
+- **≈0.60–0.70** → Good retrieval with high topical relevance.
+- **≈0.40–0.50** → Weak dataset coverage; retrieved papers are semantically related but may not exactly answer the query.
+
+This behaviour is desirable because the similarity score acts as a confidence indicator rather than forcing an incorrect answer. It also motivates several future improvements proposed for the project, including hybrid retrieval (BM25 + Dense Retrieval), larger embedding indexes, and confidence-threshold based response generation.
+
+---
+
+📷 **Actual notebook outputs** for the retrieval pipeline, keyword extraction, and agent responses are included below as evidence of the results shown above.
+<img width="1575" height="492" alt="image" src="https://github.com/user-attachments/assets/b9bf0831-92a2-49a8-96e6-e23b8b011bd7" />
+<img width="1580" height="853" alt="image" src="https://github.com/user-attachments/assets/d0aeb795-93d5-4208-a026-f5b5437b8474" />
+
+
 
 ---
 
