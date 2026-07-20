@@ -69,7 +69,7 @@ Semantic search replaces token matching with **vector similarity**. Every docume
 
 ### Why this project exists
 
-ArXiv publishes ML papers faster than any human can read titles, let alone abstracts. A researcher trying to survey a subfield has three bad options: read abstracts in submission order, keyword-search and hope the authors used the same vocabulary, or fall behind. This project is an attempt to build the fourth option end-to-end and understand every layer of it — not just call an API, but own the embedding choice, the index structure, the summarization trade-offs, the keyword extraction quality, and the agent orchestration that ties it together. It is as much a documented engineering exercise as it is a working tool: the [Engineering Challenges](#-engineering-challenges) and [Lessons Learned](#-lessons-learned) sections are written to be read, not skipped.
+ArXiv publishes ML papers faster than any human can read titles, let alone abstracts. A researcher trying to survey a subfield has three bad options: read abstracts in submission order, keyword-search and hope the authors used the same vocabulary, or fall behind. This project is an attempt to build the fourth option end-to-end and understand every layer of it — not just call an API, but own the embedding choice, the index structure, the summarization trade-offs, the keyword extraction quality, and the agent orchestration that ties it together.
 
 ---
 
@@ -79,7 +79,7 @@ ArXiv publishes ML papers faster than any human can read titles, let alone abstr
 Every paper is embedded once, offline, into a 384-dimensional vector using `all-MiniLM-L6-v2`. Queries are embedded with the exact same model at request time, so query and document live in the same semantic space — a query about *"generalization with limited data"* surfaces papers about *"few-shot learning"* even with zero token overlap.
 
 #### ⚡ Sub-second exact retrieval with FAISS
-Rather than approximate nearest-neighbor search, the index is a `faiss.IndexFlatIP` — a brute-force, mathematically exact search over all 50,000 vectors. At this corpus size that costs almost nothing and buys back 100% recall (see [Engineering Decisions](#-engineering-decisions) for exactly where this stops being the right call).
+Rather than approximate nearest-neighbor search, the index is a `faiss.IndexFlatIP` — a brute-force, mathematically exact search over all 50,000 vectors. At this corpus size that costs almost nothing and buys back 100% recall.
 
 #### 📝 Batched abstractive summarization
 Retrieved abstracts are summarized with `DistilBART` (`sshleifer/distilbart-cnn-12-6`) — **one call per query, not one call per paper** — with `min_length` computed dynamically from the shortest retrieved abstract so the model is never asked to stretch a 20-word abstract into a 40-word summary.
@@ -94,7 +94,7 @@ Keywords are not n-grams. `KeyphraseCountVectorizer` extracts candidate phrases 
 Embeddings (`arxiv_embeddings.npy`), the cleaned corpus (`cleaned_arxiv_papers.csv`), and the FAISS index (`paper_faiss.index`) are all computed once and persisted to disk. Every notebook checks `os.path.exists()` before recomputing anything — a 26-minute embedding job becomes a 1-second `np.load()` on every subsequent run.
 
 #### 🧩 Modular, three-notebook design
-Data preparation, retrieval/NLP prototyping, and agent orchestration are deliberately split across `EDA.ipynb`, `Search_Engine.ipynb`, and `RAG_Pipeline.ipynb`, with the reusable retrieval logic extracted into `src/search.py` — see [Engineering Decisions](#-engineering-decisions) for why this isn't just notebook hygiene.
+Data preparation, retrieval/NLP prototyping, and agent orchestration are deliberately split across `EDA.ipynb`, `Search_Engine.ipynb`, and `RAG_Pipeline.ipynb`, with the reusable retrieval logic extracted into `src/search.py`.
 
 #### 🔍 Reproducible by construction
 Sampling uses `random_state=42`, embeddings and indexes are content-addressed by fixed file paths, and every notebook can be re-run from a clean checkout and land on the exact same 50,000-paper corpus, the exact same vectors, and the exact same FAISS index.
@@ -303,7 +303,7 @@ Example 2 — Keyword Extraction
 
 
 1. **The agent called a tool the user didn't explicitly ask for.** The query only asked to "summarize" papers, but the system prompt's *"use both tools when the user wants a comprehensive analysis"* rule was enough for `llama-3.1-8b-instant` to decide, on its own, that keywords were also relevant. That's genuine tool-selection reasoning, not a hardcoded `if "keywords" in query` branch.
-2. **The corpus didn't actually contain strong Vision Transformer papers**, and the top similarity score was 0.4839 — noticeably lower than the ~0.65–0.70 scores seen on well-covered topics. The LLM's final answer still confidently framed the results as papers "on Vision Transformer" rather than hedging on the weak match, and filled in `[Author Name]` as a placeholder since author metadata isn't part of the tool output at all. Both of these are real, observed behaviors of a fast 8B-parameter model with `temperature=0` — not bugs in the retrieval or summarization code. They're addressed directly in [Future Improvements](#-future-improvements) and [Lessons Learned](#-lessons-learned) rather than edited out of this trace.
+2. **The corpus didn't actually contain strong Vision Transformer papers**, and the top similarity score was 0.4839 — noticeably lower than the ~0.65–0.70 scores seen on well-covered topics. The LLM's final answer still confidently framed the results as papers "on Vision Transformer" rather than hedging on the weak match, and filled in `[Author Name]` as a placeholder since author metadata isn't part of the tool output at all. Both of these are real, observed behaviors of a fast 8B-parameter model with `temperature=0` — not bugs in the retrieval or summarization code. 
 
 A second, better-behaved example — `"What are the main keywords and topics in deep learning for medical imaging?"` — routed correctly to `extract_keywords` alone and produced a final answer that stayed grounded in the retrieved titles (*"Implicit Maximum Likelihood Estimation," "Analyzing Neuroimaging Data Through Recurrent Deep Learning Models"*), which is the more representative case.
 
@@ -344,7 +344,7 @@ Rules:
 
 | Optimization | Problem it solves | Impact |
 |---|---|---|
-| **Precomputed, cached embeddings** | Encoding 50,000 papers takes real wall-clock time | A one-time cost, paid once; every subsequent notebook run loads a `.npy` file instead of recomputing — see [Engineering Challenges](#-engineering-challenges) for the exact before/after |
+| **Precomputed, cached embeddings** | Encoding 50,000 papers takes real wall-clock time | A one-time cost, paid once; every subsequent notebook run loads a `.npy` file instead of recomputing . |
 | **Cached FAISS index** | Rebuilding an index from scratch is unnecessary if the corpus hasn't changed | `faiss.write_index` / `faiss.read_index` with the same `os.path.exists()` guard pattern used for embeddings |
 | **`IndexFlatIP` at this scale** | Approximate indexes trade recall for speed — a trade this corpus size doesn't need to make yet | 100% recall, sub-millisecond search over 50,000 vectors |
 | **MiniLM over a larger embedding model** | Bigger models mean slower encoding and a larger in-memory matrix | ~73MB for the full embedding matrix at 384-dim, versus roughly double at 768-dim |
@@ -352,8 +352,8 @@ Rules:
 | **Batch summarization** | One model call per retrieved paper repeats fixed overhead *k* times | A single batched call absorbs that overhead once per query instead of once per paper |
 | **Batch keyword extraction** | Same overhead problem, different model | One `extract_keywords()` call across all retrieved abstracts, not one per abstract |
 | **`KeyphraseCountVectorizer` over raw n-grams** | Low-quality candidates waste ranking effort on phrases that were never going to be good keywords | 25 high-quality candidates to rank instead of 223 mostly-noise ones — less work, better output |
-| **Metadata lookup via `iloc`, not a search or join** | Mapping a FAISS row index back to a title/abstract needs to be effectively free | O(1) positional lookup, made correct by the `reset_index(drop=True)` alignment discipline described in [Engineering Decisions](#-engineering-decisions) |
-| **Notebook modularization** | Loading every model (embedder, summarizer, keyword extractor, agent LLM client) into one session risks OOM and slow, all-or-nothing kernel restarts | Each notebook only loads what its own concern needs — see [Engineering Decisions](#-engineering-decisions) |
+| **Metadata lookup via `iloc`, not a search or join** | Mapping a FAISS row index back to a title/abstract needs to be effectively free | O(1) positional lookup, made correct by the `reset_index(drop=True)` . |
+| **Notebook modularization** | Loading every model (embedder, summarizer, keyword extractor, agent LLM client) into one session risks OOM and slow, all-or-nothing kernel restarts | Each notebook only loads what its own concern needs — see |
 
 ---
 
@@ -385,16 +385,16 @@ Rules:
 | **pandas** | Tabular data | `iloc`-based row lookup is what bridges a FAISS integer index back to a human-readable title and abstract |
 | **NumPy** | Numerical backend | Embeddings live as `(N, 384) float32` arrays; both FAISS and scikit-learn consume NumPy natively with zero copy overhead |
 | **PyTorch** | Tensor / GPU runtime | Backs both `sentence-transformers` and the summarization `pipeline`; one `device = "cuda" if torch.cuda.is_available() else "cpu"` line makes the whole stack hardware-portable |
-| **Sentence-Transformers** (`all-MiniLM-L6-v2`) | Embedding model | Purpose-trained for sentence-level cosine similarity — unlike raw BERT `[CLS]` embeddings, which are not optimized for this out of the box. See [Engineering Decisions](#-engineering-decisions) |
+| **Sentence-Transformers** (`all-MiniLM-L6-v2`) | Embedding model | Purpose-trained for sentence-level cosine similarity — unlike raw BERT `[CLS]` embeddings, which are not optimized for this out of the box.|
 | **scikit-learn** | Classical ML utilities | `cosine_similarity` for prototyping and sanity-checking against FAISS's raw output; `ENGLISH_STOP_WORDS` (318 words) as the baseline stoplist before keyphrase extraction replaced it |
-| **FAISS** (Meta AI) | Vector index | The de facto production standard for vector search; `IndexFlatIP` specifically gives exact (not approximate) results at this corpus size — see [Engineering Decisions](#-engineering-decisions) |
+| **FAISS** (Meta AI) | Vector index | The de facto production standard for vector search; `IndexFlatIP` specifically gives exact (not approximate) results at this corpus size.|
 | **Transformers** | Model runtime | Supplies the `pipeline("summarization", ...)` abstraction and every tokenizer/model class the project depends on |
-| **DistilBART** (`sshleifer/distilbart-cnn-12-6`) | Summarization | 300MB vs. 1.6GB for `facebook/bart-large-cnn` — a project code comment, not a marketing number. Full trade-off in [Engineering Decisions](#-engineering-decisions) |
+| **DistilBART** (`sshleifer/distilbart-cnn-12-6`) | Summarization | 300MB vs. 1.6GB for `facebook/bart-large-cnn` — a project code comment, not a marketing number. |
 | **KeyBERT** | Keyword ranking | Embedding-based relevance ranking that reuses the *same* MiniLM instance used for document embedding, so keyword scores live in the same vector space as retrieval |
 | **KeyphraseCountVectorizer** | Candidate phrase generation | Replaces raw n-grams with POS-pattern-based candidates — the real quality numbers are in [Keyword Extraction Pipeline](#-keyword-extraction-pipeline) |
 | **spaCy** (`en_core_web_sm`) | POS tagging | The dependency that makes `KeyphraseCountVectorizer`'s part-of-speech filtering possible — never imported directly, but required |
 | **LangChain** | Agent framework | `@tool` decorators and `create_agent` handle the LLM ↔ tool ↔ LLM message loop automatically, instead of hand-rolled branching |
-| **LangChain-Groq / Groq** (`llama-3.1-8b-instant`) | Agent LLM | The one hosted model in an otherwise fully local stack — chosen for tool-calling support and Groq's LPU inference speed. See [Engineering Decisions](#-engineering-decisions) |
+| **LangChain-Groq / Groq** (`llama-3.1-8b-instant`) | Agent LLM | The one hosted model in an otherwise fully local stack — chosen for tool-calling support and Groq's LPU inference speed. 
 | **python-dotenv** | Secrets | Keeps `GROQ_API_KEY` out of source control and out of notebook cell outputs |
 | **Jupyter** | Development environment | The project is notebook-first by design — see *Why Notebook Separation* below for why that's a deliberate trade-off, not an unfinished migration to scripts |
 
@@ -406,7 +406,7 @@ This is the section that actually explains *why* the project looks the way it do
 
 ### Why `all-MiniLM-L6-v2` instead of a larger embedding model
 
-MiniLM-L6 is a 6-layer distilled model producing 384-dimensional embeddings — small by modern standards next to models like `all-mpnet-base-v2` (768-dim, 12 layers) or larger E5/BGE embedding models. The choice trades a small amount of retrieval accuracy for a large win on two axes that matter more at this project's scale: **encoding throughput** (embedding 50,000 papers is a batch job that has to actually finish) and **memory footprint** (a `(50000, 384)` float32 matrix is ~73MB; the same corpus at 768-dim would be ~146MB, and every FAISS comparison at query time gets correspondingly more expensive). For a single-machine, single-GPU project where the corpus is titles and abstracts rather than full papers, MiniLM's accuracy is very rarely the bottleneck — retrieval quality issues observed during testing (see [AI Agent Workflow](#-ai-agent-workflow) and [Future Improvements](#-future-improvements)) trace back to corpus coverage of a topic, not embedding model capacity.
+MiniLM-L6 is a 6-layer distilled model producing 384-dimensional embeddings — small by modern standards next to models like `all-mpnet-base-v2` (768-dim, 12 layers) or larger E5/BGE embedding models. The choice trades a small amount of retrieval accuracy for a large win on two axes that matter more at this project's scale: **encoding throughput** (embedding 50,000 papers is a batch job that has to actually finish) and **memory footprint** (a `(50000, 384)` float32 matrix is ~73MB; the same corpus at 768-dim would be ~146MB, and every FAISS comparison at query time gets correspondingly more expensive). For a single-machine, single-GPU project where the corpus is titles and abstracts rather than full papers, MiniLM's accuracy is very rarely the bottleneck — retrieval quality issues observed during testing 
 
 > **Trade-off:** a larger model would likely improve recall on subtle or highly technical queries. It was deliberately not the first lever pulled — cross-encoder reranking (see [Future Improvements](#-future-improvements)) recovers more retrieval quality per unit of added latency than swapping the base embedding model does, since it only has to run on the top-k candidates, not the full 50,000-document corpus.
 
@@ -470,7 +470,7 @@ The full path from raw HuggingFace dataset to a cached, search-ready corpus, in 
 | 10 | **Embedding generation** | `model.encode(paper_text_list, batch_size=32, show_progress_bar=True)` | `(50000, 384)` `float32` matrix, cached to `arxiv_embeddings.npy` |
 | 11 | **Persist cleaned corpus** | `df.to_csv("cleaned_arxiv_papers.csv", index=False)` | The exact metadata table every later notebook reads back with `pd.read_csv` |
 
-Steps 10 and 11 are guarded by an `os.path.exists()` check before running — the encoding job only ever executes once. Every subsequent run, including every run of `Search_Engine.ipynb` and `RAG_Pipeline.ipynb`, loads the cached `.npy` and `.csv` files directly. See [Performance Optimizations](#-performance-optimizations) for what that trades away in exchange for near-instant startup.
+Steps 10 and 11 are guarded by an `os.path.exists()` check before running — the encoding job only ever executes once. Every subsequent run, including every run of `Search_Engine.ipynb` and `RAG_Pipeline.ipynb`, loads the cached `.npy` and `.csv` files directly. 
 
 ---
 
@@ -550,8 +550,6 @@ The phrases above were extracted using the project's final keyword extraction pi
 
 <img width="965" height="413" alt="image" src="https://github.com/user-attachments/assets/f4e786da-9e04-4aac-8fec-c00cbcaf8297" />
 
-> [!NOTE]
-> When keyword extraction runs on a *batch* of retrieved abstracts rather than a single document, KeyBERT's return type changes shape depending on how many documents were passed in — a real bug this project hit and fixed. Full story in [Engineering Challenges](#-engineering-challenges).
 
 ---
 
