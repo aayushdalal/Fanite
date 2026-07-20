@@ -1,893 +1,1118 @@
 <div align="center">
 
-<img src="images/banner.png" alt="Fanite banner — replace with a real banner (recommended size 1280x400)" width="100%" />
+# 🔭 Neural ArXiv
 
-# 🚀 Fanite
+### A Semantic Vector Search & Agentic Enrichment Engine for Machine Learning Research Papers
 
-### AI-Powered Semantic Research Assistant
+*Ask a question in plain English. Get back the right papers — retrieved by meaning, summarized, and tagged with their key ideas — not a wall of raw abstracts.*
 
-**Search Research Papers by *Meaning*, Not Keywords.**
+<!-- 🖼️ BANNER PLACEHOLDER — replace with a real banner image, e.g. docs/assets/banner.png (recommended 1280×640) -->
+<img src="docs/assets/banner.png" alt="Neural ArXiv banner" width="100%" />
 
-*A production-style semantic search engine that retrieves, summarizes, and explains Machine Learning research papers using dense embeddings, FAISS vector search, and an LLM tool-calling agent.*
+[![Python](https://img.shields.io/badge/python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![sentence-transformers](https://img.shields.io/badge/sentence--transformers-MiniLM--L6--v2-blueviolet?style=flat-square)](https://www.sbert.net/)
+[![FAISS](https://img.shields.io/badge/FAISS-IndexFlatIP-0467DF?style=flat-square)](https://github.com/facebookresearch/faiss)
+[![🤗 Transformers](https://img.shields.io/badge/%F0%9F%A4%97%20Transformers-DistilBART-FFD21E?style=flat-square)](https://huggingface.co/docs/transformers)
+[![LangChain](https://img.shields.io/badge/LangChain-tool--calling%20agent-1C3C3C?style=flat-square)](https://www.langchain.com/)
+[![Groq](https://img.shields.io/badge/Groq-llama--3.1--8b--instant-F55036?style=flat-square)](https://groq.com/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat-square)](https://github.com/your-username/neural-arxiv/pulls)
 
-<br/>
+<!-- 🎬 DEMO PLACEHOLDER — replace with a real terminal/UI capture, GIF, or asciinema link -->
+<img src="docs/assets/demo.gif" alt="Neural ArXiv demo" width="80%" />
 
-![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)
-![Sentence Transformers](https://img.shields.io/badge/Sentence--Transformers-Embeddings-orange?style=for-the-badge)
-![FAISS](https://img.shields.io/badge/FAISS-Vector%20Search-blue?style=for-the-badge)
-![HuggingFace Transformers](https://img.shields.io/badge/HuggingFace-Transformers-yellow?style=for-the-badge&logo=huggingface&logoColor=white)
-![DistilBART](https://img.shields.io/badge/DistilBART-Summarization-success?style=for-the-badge)
-![KeyBERT](https://img.shields.io/badge/KeyBERT-Keyphrase%20Extraction-green?style=for-the-badge)
-![LangChain](https://img.shields.io/badge/LangChain-Agent%20Orchestration-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)
-![Groq](https://img.shields.io/badge/Groq-Llama%203.1--8B%20Instant-F55036?style=for-the-badge)
-![License](https://img.shields.io/badge/License-MIT-red?style=for-the-badge)
-
-<br/>
-
-**[Features](#-features) · [Architecture](#-system-architecture) · [How It Works](#-complete-ai-workflow) · [Engineering Decisions](#-engineering-decisions) · [Challenges](#-engineering-challenges) · [Performance](#-performance-metrics) · [Getting Started](#-installation)**
+**[Quick Start](#installation)** · **[Architecture](#system-architecture)** · **[Engineering Decisions](#engineering-decisions)** · **[Debugging Stories](#engineering-challenges)** · **[Benchmarks](#performance-metrics)**
 
 </div>
 
+---
+
+## What is Neural ArXiv?
+
+Neural ArXiv is a semantic search and research-assistant system built on top of a **50,000-paper sample** of the `CShorten/ML-ArXiv-Papers` dataset. It is built in three layers, each sitting on top of the last:
+
+1. **A semantic search backend** — every paper's title + abstract is embedded with `all-MiniLM-L6-v2` and indexed in a FAISS `IndexFlatIP` vector index, enabling sub-second cosine-similarity search over the whole corpus instead of brittle keyword matching.
+2. **An enrichment layer** — every retrieved paper is automatically **summarized** (batched DistilBART) and has its **keyphrases extracted** (KeyBERT + `KeyphraseCountVectorizer` + Maximal Marginal Relevance), so a query returns a digestible answer instead of ten raw abstracts to read yourself.
+3. **An agentic orchestration layer** — a LangChain **tool-calling agent**, powered by a hosted Groq LLM (`llama-3.1-8b-instant`), sits in front of the retrieval/enrichment tools. It reads a natural-language question, decides which tool(s) the question actually needs, executes them, and synthesizes a final answer that is grounded in — and only in — what was actually retrieved.
+
+> **The problem it solves:** keyword search over academic abstracts fails the moment a query and a paper describe the same idea in different words — a search for *"medical image analysis with deep learning"* should surface a paper about *"CNN-based MRI diagnosis"* even though not one word overlaps. And even once the right papers are found, reading ten full abstracts to extract the gist is slow. Neural ArXiv closes both gaps: it retrieves by **meaning**, then does the reading for you.
+
+**Who it's for:** this is a portfolio / technical-interview project first, and a usable research tool second — it is deliberately documented (see [Engineering Decisions](#engineering-decisions) and [Engineering Challenges](#engineering-challenges) below) to be defensible in a systems-design interview. Nearly every implementation choice has a recorded reason, a rejected alternative, and — where it happened — a debugging story.
+
 <br/>
 
-> **🎥 Demo**
->
-> *`images/demo.gif` — replace this placeholder with a screen recording of an end-to-end query (type a question → watch retrieval → summary → keywords → agent answer appear).*
->
-> ![Demo placeholder](images/demo.gif)
+## Table of Contents
 
-<br/>
-
----
-
-## 📚 Table of Contents
-
-<details>
-<summary>Click to expand</summary>
-
-1. [Overview](#-overview)
-2. [Motivation](#-motivation)
-3. [Features](#-features)
-4. [System Architecture](#-system-architecture)
-5. [Complete AI Workflow](#-complete-ai-workflow)
-6. [AI Agent Workflow](#-ai-agent-workflow)
-7. [Prompt Engineering](#-prompt-engineering)
-8. [Tools & Tech Stack](#-tools--tech-stack)
-9. [Engineering Decisions](#-engineering-decisions)
-10. [Data Pipeline](#-data-pipeline)
-11. [Search Pipeline](#-search-pipeline)
-12. [Keyword Extraction Pipeline](#-keyword-extraction-pipeline)
-13. [Summarization Pipeline](#-summarization-pipeline)
-14. [Performance Optimizations](#-performance-optimizations)
-15. [Engineering Challenges](#-engineering-challenges)
-16. [Performance Metrics](#-performance-metrics)
-17. [Future Improvements / Roadmap](#-future-improvements--roadmap)
-18. [Folder Structure](#-folder-structure)
-19. [Screenshots](#-screenshots)
-20. [Installation](#-installation)
-21. [Running the Project](#-running-the-project)
-22. [Results](#-results)
-23. [Lessons Learned](#-lessons-learned)
-24. [Credits](#-credits)
-25. [License](#-license)
-
-</details>
+- [Motivation](#motivation)
+- [Features](#features)
+- [System Architecture](#system-architecture)
+- [Complete AI Workflow](#complete-ai-workflow)
+- [AI Agent Workflow](#ai-agent-workflow)
+- [Prompt Engineering](#prompt-engineering)
+- [Tools Used](#tools-used)
+- [Engineering Decisions](#engineering-decisions)
+- [Data Pipeline](#data-pipeline)
+- [Search Pipeline](#search-pipeline)
+- [Keyword Extraction Pipeline](#keyword-extraction-pipeline)
+- [Summarization Pipeline](#summarization-pipeline)
+- [Performance Optimizations](#performance-optimizations)
+- [Engineering Challenges](#engineering-challenges)
+- [Performance Metrics](#performance-metrics)
+- [Future Improvements](#future-improvements)
+- [Folder Structure](#folder-structure)
+- [Screenshots](#screenshots)
+- [Installation](#installation)
+- [Running the Project](#running-the-project)
+- [Results](#results)
+- [Lessons Learned](#lessons-learned)
+- [Credits](#credits)
+- [License](#license)
 
 ---
 
-## 📖 Overview
+## Motivation
 
-Finding relevant research is getting harder, not easier, as the volume of ML literature explodes. Traditional search — whether it's `Ctrl+F`, SQL `LIKE`, or classic inverted-index engines — relies on **keyword matching**. That breaks the moment a user's wording differs from the author's.
+### Why semantic search instead of keyword search?
 
-```text
-User query:      "AI for detecting cancer from scans"
-Paper title:      "Deep Learning for Medical Image Analysis"
-Keyword search:   ❌ No overlapping keywords → paper is missed
-Fanite:           ✅ Nearly identical *meaning* → paper is ranked #1
-```
+Lexical search — SQL `LIKE`, TF-IDF, BM25 — matches on literal token overlap. Research abstracts describe the same idea in wildly different vocabularies: *"deep learning for medical image analysis,"* *"CNN-based MRI diagnosis,"* and *"neural approaches to radiological image segmentation"* are, semantically, the same topic — but a keyword search for any one phrasing misses the other two entirely. Embedding-based semantic search fixes this by representing text as a point in a continuous vector space where **meaning determines proximity**, not surface wording. Cosine similarity between two paper vectors captures whether they're "about the same thing," independent of the words either author happened to choose.
 
-**Fanite solves this with semantic search.** Instead of matching words, it matches *meaning*. Every paper in a 50,000-document ArXiv corpus is converted into a dense 384-dimensional vector using a Transformer-based sentence encoder. A user's query is embedded into the same vector space, and the papers whose vectors point in the closest *direction* — regardless of vocabulary overlap — are returned.
+| | Keyword Search (TF-IDF / BM25 / `LIKE`) | Semantic Search (this project) |
+|---|---|---|
+| **Matching unit** | Literal tokens / n-grams | Dense meaning vectors |
+| **Synonym robustness** | ✗ misses paraphrases | ✅ "CNN" ≈ "convolutional neural network" |
+| **Query "deep learning medicine" vs. paper "CNN MRI diagnosis"** | No match | Matched (high cosine similarity) |
+| **Scales to 50K+ docs at low latency** | ✅ (inverted index) | ✅ (FAISS `IndexFlatIP`) |
+| **Needs exact vocabulary overlap** | ✅ required | ❌ not required |
 
-On top of retrieval, Fanite layers **AI enrichment**: every result is automatically summarized (DistilBART), tagged with clean topical keyphrases (KeyBERT + MMR), and the whole system is wrapped behind a **tool-calling LLM agent** (LangChain + Groq) that reads a natural-language question, decides what the user actually needs, and answers in plain English — grounded strictly in what was actually retrieved, with no invented citations.
+### Why research papers / ArXiv specifically?
 
+ArXiv abstracts are a large, freely available, information-dense text corpus that is realistic and genuinely non-trivial — long-form academic English, dense domain jargon, and widely varying abstract lengths make it a good stress test for an embedding + retrieval + summarization pipeline. It's also a real pain point: finding related work quickly is something every ML researcher, grad student, or coursework-doer actually needs.
 
----
+### Why embeddings — the technical case
 
-## 💡 Motivation
+`all-MiniLM-L6-v2` compresses arbitrary-length text into a fixed **384-dimensional** dense vector, where semantic similarity corresponds to vector *direction* rather than literal token overlap. That lets a query like *"deep learning for medical image analysis"* retrieve papers that never use those exact words, as long as they're conceptually related — something no inverted index can do without a thesaurus bolted on top.
 
-### The problem with keyword search
+### Why AI agents on top of retrieval?
 
-Classic lexical search — TF-IDF, BM25, SQL `LIKE`, even a well-tuned Elasticsearch index — scores documents by **literal token overlap**. That works fine when the searcher already knows the exact vocabulary an author used. It fails constantly in research search, because the same idea gets described in wildly different vocabularies across papers:
-
-- *"deep learning for medical image analysis"*
-- *"CNN-based MRI diagnosis"*
-- *"neural approaches to radiological image segmentation"*
-
-Three papers, one underlying topic, almost zero shared keywords. A keyword engine tuned for one phrasing silently drops the other two — and the searcher never even knows what they missed. This is the central failure mode Fanite is built to eliminate.
-
-### Why embeddings, not keywords
-
-A sentence-transformer model compresses arbitrary-length text into a fixed-size dense vector — for Fanite, 384 numbers — positioned in a continuous **semantic space**. Two pieces of text end up close together in that space if they mean similar things, independent of which exact words they use. Cosine similarity between two such vectors is a direct, computable proxy for *"are these about the same thing?"* — which is precisely the question a research search engine needs to answer, and precisely the question keyword matching cannot.
-
-### Why ArXiv / research papers specifically
-
-Academic abstracts are long-form, jargon-dense, and highly variable in length and phrasing — a genuinely hard, realistic text corpus, not a toy dataset. They're also freely available at scale via Hugging Face's `datasets` ecosystem, and "finding related work fast" is a real, everyday pain point for anyone doing ML research, coursework, or literature review. It's a problem worth solving and a corpus hard enough to prove the approach actually works.
-
-### Why an AI agent on top of retrieval
-
-A raw vector search only returns row indices and similarity scores — it doesn't summarize, doesn't extract themes, and has no way to know *what the user actually wants* from a given question. Does *"what's this paper about?"* want a summary? Does *"what themes come up in medical imaging papers?"* want keyphrases? Fanite answers this by putting a **reasoning LLM in front of the retrieval system** — an agent that reads the question, decides which specialized capability (or capabilities) it calls for, invokes them, and turns raw retrieval output into a single, coherent, cited answer. That's the difference between a search backend and a research assistant.
-
-### Why this project exists
-
-Fanite exists to demonstrate — end-to-end, with the debugging scars to prove it — what it actually takes to ship a retrieval-augmented NLP system: embedding-based retrieval done correctly (not just "call a library"), transformer-based summarization and keyphrase extraction tuned for real quality, an agentic orchestration layer that grounds itself in real data instead of hallucinating, and the unglamorous production engineering (device management, batching, caching, reproducibility, version control hygiene) that separates a notebook demo from a system someone could actually rely on.
-
+A raw FAISS search only returns row indices and similarity scores. It doesn't summarize, doesn't extract themes, and can't decide *what the user actually wants* — a full explanation? Just the key topics? Both? A LangChain tool-calling agent adds a reasoning layer on top: given a natural-language question, the agent LLM decides which specialized tool(s) to invoke, executes them, and turns raw tool output into a coherent, cited final answer — turning a static search backend into something closer to an interactive research assistant.
 
 ---
 
-## ✨ Features
+## Features
 
-### 🧠 Semantic Search
-Searches papers by **meaning**, not string overlap. Every paper's title + abstract is embedded with `all-MiniLM-L6-v2` into a 384-dimensional vector; queries are embedded into the same space so retrieval is a pure geometric nearest-neighbor problem, not a text-matching one.
+Not just a list — here's *why* each capability exists and what it actually buys the user.
 
-### ⚡ High-Speed Vector Retrieval
-All 50,000+ paper embeddings live in a **FAISS `IndexFlatIP`** index. Combined with L2-normalization, this gives exact cosine-similarity search that runs in single-digit milliseconds — even brute-force, exact search over the full corpus is not the bottleneck in this system (see [Performance Metrics](#-performance-metrics)).
+#### 🧠 Meaning-based semantic retrieval
+Every paper is represented as a 384-dimensional embedding from `all-MiniLM-L6-v2`, and every query is embedded with the exact same model into the exact same vector space. Retrieval is cosine similarity, not token overlap — so a query and a relevant paper can share **zero words** and still rank at the top, as long as they're conceptually aligned.
 
-### 🤖 AI-Powered Summarization
-Every retrieved paper is automatically condensed with **DistilBART** (`sshleifer/distilbart-cnn-12-6`) so a user can understand a paper's contribution without reading the full abstract. Summarization runs **batched**, not per-paper, and its length bounds are computed **dynamically** per query so the model is never asked for a summary longer than the source abstract.
+#### ⚡ Sub-second search over the full corpus
+All paper vectors live in a FAISS `IndexFlatIP` index. Combined with L2-normalizing every vector before indexing, the index's native (and very fast) inner-product operation becomes mathematically identical to exact cosine similarity — no approximation, no recall loss, and (per the project's own measurements) only a few milliseconds of the total query time, even across the full 50,000-vector index.
 
-### 🔑 Intelligent Keyphrase Extraction
-**KeyBERT**, backed by the same MiniLM model used for retrieval, extracts the most representative topical phrases per paper — using **`KeyphraseCountVectorizer`** for grammatically valid candidate generation (POS-pattern-based, not raw n-grams) and **Maximal Marginal Relevance (MMR)** to keep the final keyword list diverse instead of ten near-duplicate variants of the same phrase.
+#### 📝 Automatic abstractive summarization
+Every retrieved paper is run through a batched DistilBART (`sshleifer/distilbart-cnn-12-6`) summarization pass, with `max_length`/`min_length` bounds calculated *dynamically per query* from the actual word counts of the retrieved abstracts — so the summarizer is never asked for a length combination that's impossible given the shortest abstract in the batch.
 
-### 🤝 Agentic Tool-Calling Assistant
-A **LangChain agent**, reasoned over by a hosted **Groq `llama-3.1-8b-instant`** model, sits in front of the retrieval/summarization/keyword tools. It reads a natural-language question, autonomously decides which tool(s) the question actually calls for, executes them, and synthesizes a final answer that is explicitly instructed to **ground itself in tool output and never invent citations**. This turns Fanite from a static pipeline into an interactive assistant that adapts to how the question is phrased.
+#### 🏷️ Automatic, diverse keyphrase extraction
+KeyBERT (backed by the same MiniLM model) plus `KeyphraseCountVectorizer` (POS-pattern-based candidate generation via spaCy) plus Maximal Marginal Relevance produces topic keyphrases that are grammatically clean *by construction* — measured at **100% clean candidates**, versus ~11–14% for a naive n-gram approach (see [Engineering Decisions](#engineering-decisions)).
 
-### 🚀 Production-Oriented Optimizations
-- Embeddings cached to disk as `.npy` — the multi-tens-of-minutes encoding pass runs once, ever.
-- FAISS index persisted and reloaded rather than rebuilt on every run.
-- Cleaned dataset stored separately from raw data to avoid repeated preprocessing.
-- Batched Transformer inference for both summarization and keyword extraction — one GPU round-trip per query, not one per paper.
-- L2 normalization for mathematically exact cosine-similarity search on an index type that has no native cosine metric.
-- A clean separation between offline (index-building) and online (per-query) pipelines.
-- Memory-efficient `float32` embeddings and single-agent-plus-tools orchestration rather than an over-engineered multi-agent swarm.
+#### 🤖 Natural-language, tool-calling agent access
+A LangChain agent (`create_agent`), reasoned over by a hosted Groq `llama-3.1-8b-instant` model, sits in front of two tools — `search_and_summarize` and `extract_keywords`. The agent reads the question, decides autonomously which tool(s) it needs, and answers in natural language. Ask for "papers on X" and it summarizes; ask for "the main themes in Y" and it extracts keywords; ask for a full analysis and it does both.
 
+#### 🛡️ Built-in anti-hallucination grounding
+The agent's system prompt explicitly bounds its factual universe to what its tools actually returned: always cite paper titles, never invent a paper or a citation that isn't in the tool output. This is a deliberate architectural constraint, not an afterthought — see [Prompt Engineering](#prompt-engineering).
+
+#### 🔀 Two access patterns, one retrieval core
+A **direct function pipeline** (`getrelevant_papers(query, k)`) returns structured Python dicts for programmatic use, and an **agent-mediated pipeline** answers free-form natural-language questions conversationally. Both are built on the same underlying `ArxivSearchEngine` — no duplicated retrieval logic between them.
+
+#### 💾 Caching that turns 26 minutes into ~1 second
+Embedding the full corpus is a multi-tens-of-minutes operation (a 15,000-row test batch was measured at ~26 minutes at `batch_size=32`). Both the embeddings matrix and the FAISS index are persisted to disk on first computation and simply reloaded on every subsequent run.
+
+#### 🖥️ Hardware-adaptive, crash-free device placement
+A single shared `torch.cuda.is_available()` check drives device selection for *both* the SentenceTransformer (which expects a string device) and the Hugging Face summarization pipeline (which expects an integer device index) — reconciling two different device-argument conventions in one place instead of two, with a tested, graceful CPU fallback.
 
 ---
 
-## 🏗️ System Architecture
+## System Architecture
 
-Fanite is built as an **offline indexing pipeline** feeding an **online query pipeline**, with an agentic reasoning layer sitting on top of the online side.
+The diagram below is the 10,000-foot view. There are actually **two ways to query the system** — a direct function pipeline and an agent-mediated pipeline — both of which are detailed precisely in [Complete AI Workflow](#complete-ai-workflow) and [AI Agent Workflow](#ai-agent-workflow). This diagram shows the components common to both.
 
 ```mermaid
 flowchart TD
-    subgraph OFFLINE["🔧 OFFLINE — Runs Once, Cached to Disk"]
-        A["📦 Dataset<br/><i>CShorten/ML-ArXiv-Papers</i>"] --> B["🔍 EDA<br/>Null checks · schema review"]
-        B --> C["🧹 Cleaning<br/>Dedup · whitespace · length filter · reset_index"]
-        C --> D["🧠 Embedding Generation<br/>all-MiniLM-L6-v2 · batch_size=32"]
-        D --> E[("💾 Vector Database<br/>FAISS IndexFlatIP<br/>+ L2 Normalization")]
-        D --> DC[("💾 Cached .npy<br/>+ cleaned_arxiv_papers.csv")]
-    end
-
-    subgraph ONLINE["⚡ ONLINE — Runs Per Query"]
-        Q["👤 User Query"] --> AG{"🤖 Agent Workflow<br/>LangChain + Groq llama-3.1-8b-instant"}
-        AG -->|"tool call"| SE["🔎 Search Engine<br/>Query Encode → L2 Norm → FAISS Search"]
-        SE -.->|"reads"| E
-        SE --> TOPK["📄 Top-K Papers<br/>score · title · abstract"]
-        TOPK --> KW["🔑 Keyword Extraction<br/>KeyBERT + KeyphraseCountVectorizer + MMR"]
-        TOPK --> SUM["📝 Summarizer<br/>DistilBART · batched · dynamic length"]
-        KW --> RESP["📤 Final Response<br/>Grounded, cited, natural-language answer"]
-        SUM --> RESP
-        AG -->|"synthesizes"| RESP
-        RESP --> USER["👤 User"]
-    end
-
-    style OFFLINE fill:#0d1117,stroke:#30363d,color:#c9d1d9
-    style ONLINE fill:#0d1117,stroke:#30363d,color:#c9d1d9
-    style E fill:#1f6feb,stroke:#58a6ff,color:#ffffff
-    style AG fill:#f55036,stroke:#ff7b59,color:#ffffff
-```
-
-**Why the offline/online split matters:** the expensive part of this system — encoding ~50,000 documents — is a one-time cost, cached to disk (`.npy` embeddings, a persisted FAISS index) and never repeated. Every *online* query only pays for query encoding, a FAISS lookup, and the two enrichment models — which is why per-query latency stays under a second even without GPU-accelerated vector search (see [Performance Metrics](#-performance-metrics)).
-
-**Why one agent, not a diagram full of boxes:** notice the architecture doesn't spray the LLM across five different "agent" services. One orchestrating agent decides *what* to do; two narrow, purpose-built tools (search-and-summarize, extract-keywords) do the actual work. This is a deliberate decision, not a simplification for the diagram — see [Engineering Decisions §9.14](#-engineering-decisions) for the reasoning, and why an earlier design that blurred this line was explicitly reverted.
-
-
----
-
-## 🔄 Complete AI Workflow
-
-Everything that happens between a user hitting "search" and a final answer appearing — no step skipped.
-
-```mermaid
-flowchart TD
-    A["👤 User Query<br/>e.g. 'Deep learning in medical science'"] --> B["🧠 Sentence Transformer Encoding<br/>all-MiniLM-L6-v2"]
-    B --> C["📐 384-Dimensional Query Embedding<br/>wrapped as (1, 384) — not a bare 1D vector"]
-    C --> D["📏 L2 Normalization<br/>faiss.normalize_L2 — unit-length vector"]
-    D --> E["🔎 FAISS Search<br/>index.search(query_embedding, k)<br/>inner product ≡ cosine similarity"]
-    E --> F["🏆 Top-K Retrieval<br/>D = scores (sorted desc) · I = positional indices"]
-    F --> G["📇 Metadata Lookup<br/>df.iloc[idx] → title + abstract"]
-    G --> H["🔑 Keyword Extraction<br/>batched KeyBERT + MMR over all K abstracts"]
-    G --> I["📝 Summary Generation<br/>batched DistilBART, dynamic min/max length"]
-    H --> J["🧩 Response Assembly<br/>zip(scores, indices, summaries, keywords)"]
+    A[("📚 Dataset<br/>CShorten ML-ArXiv-Papers<br/>~117K to 118K rows")] --> B["🔍 EDA<br/>null checks, distribution checks"]
+    B --> C["🧹 Cleaning<br/>dedup · whitespace normalize<br/>short-text filter · reproducible sample (n=50000, seed=42)"]
+    C --> D["🧠 Embedding Generation<br/>all-MiniLM-L6-v2 → 384-dim vectors<br/>batch_size=32"]
+    D --> E[("🗂️ Vector Database<br/>FAISS IndexFlatIP<br/>L2-normalized · cached to disk")]
+    E --> F["⚡ Search Engine<br/>ArxivSearchEngine.search(query, k)"]
+    F --> G{"🤖 Agent Workflow<br/>LangChain create_agent<br/>Groq llama-3.1-8b-instant"}
+    G -->|extract_keywords tool| H["🏷️ Keyword Extraction<br/>KeyBERT + KeyphraseCountVectorizer + MMR"]
+    G -->|search_and_summarize tool| I["📝 Summarizer<br/>DistilBART, batched"]
+    H --> J["✅ Final Response<br/>grounded, cited, no invented papers"]
     I --> J
-    J --> K["📤 Final Output<br/>ranked list: score · title · summary · keywords"]
 
-    style A fill:#1f6feb,stroke:#58a6ff,color:#fff
-    style K fill:#2ea043,stroke:#3fb950,color:#fff
+    style A fill:#1f2937,stroke:#60a5fa,color:#fff
+    style E fill:#1f2937,stroke:#60a5fa,color:#fff
+    style G fill:#312e81,stroke:#818cf8,color:#fff
+    style J fill:#064e3b,stroke:#34d399,color:#fff
 ```
 
-| Stage | What actually happens | Why it matters |
-|---|---|---|
-| **1. User Query** | Raw text, e.g. *"Deep learning in medical science"* | The entry point — no query preprocessing beyond what the encoder does internally. |
-| **2. MiniLM Encoding** | `query_embedding = model.encode([query])` — the query is wrapped in a **list**, not passed as a bare string. | Sentence-transformers flattens a single string to a 1D `(384,)` array; both FAISS's `.search()` and cosine-similarity utilities require 2D "batch" input. Feeding a one-element list sidesteps the issue entirely rather than reshaping later. |
-| **3. 384-D Embedding** | Output is a `(1, 384)` `float32` array — the query now lives in the exact same vector space as every indexed paper. | Query and documents **must** share an embedding space for similarity comparison to mean anything; this is why the same model instance is reused everywhere (including inside KeyBERT). |
-| **4. L2 Normalization** | `faiss.normalize_L2(query_embedding)` scales the vector to unit length, **in place**, mirroring the normalization already applied to every stored paper vector at index-build time. | FAISS has no native cosine-similarity index. Normalizing to unit length turns FAISS's fast native inner-product operation into an exact cosine-similarity computation — this is the mathematical trick the whole retrieval layer depends on. |
-| **5. FAISS Search** | `D, I = index.search(query_embedding, k)` — brute-force, exact inner-product search over the flat index. | At ~50,000 vectors, exact search is fast enough that approximate indexing would be premature optimization; FAISS returns pre-sorted, exact nearest neighbors. |
-| **6. Top-K Retrieval** | `D` (a `(1,k)` array of similarity scores, sorted descending) and `I` (a `(1,k)` array of **positional** row indices) are returned. | Positional, not label-based — this is why the underlying DataFrame's index must be a clean, gap-free `0..N-1` range (see [Engineering Challenges](#-engineering-challenges)). |
-| **7. Metadata Lookup** | Each index in `I[0]` is resolved via `df.iloc[idx]` to its title and abstract. | `.iloc` (positional) rather than `.loc` (label-based) — the DataFrame's row order must stay perfectly aligned with the embeddings array's row order, or this silently returns the wrong paper. |
-| **8. Keyword Extraction** | All `k` retrieved abstracts are batched into a single `kw_model.extract_keywords(...)` call with `KeyphraseCountVectorizer` candidates and MMR diversification. | Batched, not looped — same reasoning as summarization below. A single-document (`k=1`) edge case is explicitly normalized (see [Engineering Challenges](#-engineering-challenges)). |
-| **9. Summary Generation** | All `k` abstracts are batched into a single `summarizer(...)` call, with `max_length`/`min_length` computed dynamically from the shortest abstract in the batch. | Batching amortizes tokenization/padding/transfer/kernel-launch overhead across all `k` items instead of paying it `k` separate times; dynamic bounds prevent asking the model for a summary longer than its source text. |
-| **10. Response Assembly** | `zip(D[0], I[0], summaries, keywords)` walks all four parallel result sequences together into one list of result objects. | `zip()` silently truncates to the shortest iterable on any length mismatch — this exact line is the site of the project's flagship bug (see [Engineering Challenges](#-engineering-challenges)). |
-| **11. Final Output** | A ranked list of `{score, title, summary, keywords}` — or, in the agent path, a synthesized natural-language answer grounded in this same data. | The same enriched result structure feeds both the direct programmatic API and the LLM agent's tools. |
-
+**Reading this diagram:** everything from *Dataset* through *Vector Database* happens **once**, offline, ahead of time (see [Data Pipeline](#data-pipeline)) — it's the indexing path. Everything from *Search Engine* onward happens **per query**, at request time. The branch at *Agent Workflow* is the important detail the linear picture above simplifies: the agent doesn't always run *both* enrichment steps — it decides, per question, whether it needs summaries, keywords, or both. The [direct pipeline](#complete-ai-workflow) (no agent in the loop) always runs both, unconditionally, in a single function call.
 
 ---
 
-## 🤖 AI Agent Workflow
+## Complete AI Workflow
 
-> **A note on architecture, up front:** it's tempting to build "AI agent" systems as a swarm of independently-named agents — a Query Understanding Agent, a Retrieval Agent, a Summarization Agent, and so on, each its own object. Fanite deliberately does **not** do this. It uses **one orchestrating agent** (a LangChain `create_agent` running Groq's `llama-3.1-8b-instant`) and **two narrow, purpose-built tools**. Below, the agent's reasoning is broken into the five responsibilities a multi-agent design would normally split across separate services — but in Fanite they live inside a single agent's tool-calling loop. This is a considered tradeoff, not a shortcut: see [Engineering Decisions](#-engineering-decisions) for why a swarm was rejected in favor of this design.
+This section traces **exactly** what happens between a user typing a query and a response coming back, for the direct (non-agent) pipeline — `getrelevant_papers(query, k=5)` in `Search_Engine.ipynb`. No steps are skipped.
 
 ```mermaid
 flowchart TD
-    U["👤 User Question<br/>natural language"] --> QU
-
-    subgraph AGENT["🤖 Single Orchestrating Agent — Groq llama-3.1-8b-instant"]
-        QU["1️⃣ Query Understanding<br/>Reads SYSTEM_PROMPT + question<br/>Decides: which tool(s) apply?"]
-        RA["2️⃣ Retrieval<br/>(runs inside both tools)<br/>FAISS semantic search"]
-        KA["3️⃣ Keyword Extraction<br/>extract_keywords tool<br/>KeyBERT + MMR"]
-        SA["4️⃣ Summarization<br/>search_and_summarize tool<br/>DistilBART, batched"]
-        RSA["5️⃣ Response Assembly<br/>Reads ToolMessage(s) back<br/>Synthesizes grounded final answer"]
-    end
-
-    QU -->|"tool_call: search_and_summarize"| RA
-    QU -->|"tool_call: extract_keywords"| RA
-    RA --> KA
-    RA --> SA
-    KA -->|"ToolMessage"| RSA
-    SA -->|"ToolMessage"| RSA
-    RSA --> OUT["📤 Final Answer<br/>cites paper titles · grounded in tool output only"]
-
-    style AGENT fill:#161b22,stroke:#f55036,color:#c9d1d9
-    style QU fill:#f55036,stroke:#ff7b59,color:#fff
-    style RSA fill:#f55036,stroke:#ff7b59,color:#fff
+    A["👤 User Query<br/>raw text, e.g. 'Deep learning in medical science'"] --> B["🧠 MiniLM Encoding<br/>model.encode([query])"]
+    B --> C["📐 384-dimensional embedding<br/>shape (1, 384) — wrapped in a list<br/>so the output stays 2D"]
+    C --> D["📏 L2 Normalization<br/>faiss.normalize_L2(query_embedding)"]
+    D --> E["🔎 FAISS Search<br/>D, I = index.search(query_embedding, k)"]
+    E --> F["🏆 Top-k Retrieval<br/>D = similarity scores (pre-sorted)<br/>I = positional row indices"]
+    F --> G["📇 Metadata Lookup<br/>df.iloc[idx] per hit → title, abstract"]
+    G --> H["🏷️ Keyword Extraction<br/>KeyBERT + MMR, ALL k abstracts in one batched call"]
+    G --> I["📝 Summary Generation<br/>DistilBART, ALL k abstracts in one batched call"]
+    H --> J["🧩 Response Assembly<br/>zip(D[0], I[0], summaries, keywords)"]
+    I --> J
+    J --> K["🎯 Final Output<br/>list of k enriched result dicts"]
 ```
 
-| Responsibility | Where it actually lives | What it does |
-|---|---|---|
-| **① Query Understanding** | The agent LLM's first reasoning pass, guided by `SYSTEM_PROMPT` | Reads the user's raw question and the tool schemas/descriptions (derived from each `@tool` function's docstring), and decides which tool(s) — `search_and_summarize`, `extract_keywords`, or both — the question actually calls for. |
-| **② Retrieval** | Inside *both* tools, via `ArxivSearchEngine.search(query, k)` (`src/search.py`) | Embeds the query, L2-normalizes it, and runs the exact same FAISS lookup described in [Complete AI Workflow](#-complete-ai-workflow) — implemented once, reused by both tools, never duplicated. |
-| **③ Keyword Extraction** | The `extract_keywords` tool | Runs batched KeyBERT + `KeyphraseCountVectorizer` + MMR over the retrieved abstracts and formats the result as a plain-text block the LLM can read back. |
-| **④ Summarization** | The `search_and_summarize` tool | Runs batched DistilBART with dynamically computed length bounds over the retrieved abstracts, formatted as a plain-text block. |
-| **⑤ Response Assembly** | The agent LLM's second/final reasoning pass | Reads the tool result(s) as `ToolMessage`s and produces the final natural-language answer, instructed to ground every claim in the tool output and cite paper titles by name. |
+| Stage | What actually happens |
+|---|---|
+| **1. User Query** | A raw text string, e.g. `"Deep learning in medical science"`. No preprocessing is applied to the query beyond what the model does internally. |
+| **2. MiniLM Encoding** | `query_embedding = model.encode([query])`. The query is deliberately wrapped in a **list**, not passed as a bare string — `sentence-transformers` would otherwise flatten a single string to a 1D `(384,)` array, and both FAISS's `index.search()` and scikit-learn's `cosine_similarity()` require 2D "batch of vectors" input. |
+| **3. 384-dimensional embedding** | The output is a `(1, 384)` `float32` array — one row, 384 dimensions, fixed by the MiniLM architecture. |
+| **4. L2 Normalization** | `faiss.normalize_L2(query_embedding)` scales the query vector to unit length **in place**, exactly mirroring the normalization already applied to every stored paper vector at indexing time — this is what makes FAISS's inner-product search behave as true cosine similarity. |
+| **5. FAISS Search** | `D, I = index.search(query_embedding, k)` searches the flat index of all normalized paper embeddings via inner product. |
+| **6. Top-k Retrieval** | `D` is a `(1, k)` array of similarity scores, **pre-sorted descending by FAISS itself**. `I` is a `(1, k)` array of the **positional** row indices of the best-matching papers. |
+| **7. Metadata Lookup** | For each `(score, idx)` pair in `zip(D[0], I[0])`, the matching row is fetched with `df.iloc[idx]` — positional lookup, which is only correct because the DataFrame's index was reset to a clean `0..N-1` range during the data pipeline (see [Challenge 8.11](#engineering-challenges)). Each abstract's word count is also collected here, to feed the next two stages. |
+| **8. Keyword Extraction** | All `k` abstracts are passed to `kw_model.extract_keywords(...)` **in one batched call**, not looped per paper. |
+| **9. Summary Generation** | All `k` abstracts are passed to the DistilBART summarizer pipeline **in one batched call**, with `max_length`/`min_length` computed dynamically for this batch. |
+| **10. Response Assembly** | `zip(D[0], I[0], summaries, keywords)` walks all four parallel sequences together, building one result dict per paper: `{"score": ..., "title": ..., "Keywords": ..., "summary": ...}`. |
+| **11. Final Output** | A Python list of `k` fully enriched dictionaries — printed directly in the notebook, or consumed programmatically downstream. |
 
-**Tool-calling mechanics:** each tool is a plain Python function decorated with LangChain's `@tool`, whose **docstring functions as its LLM-facing description** — not just documentation, but literally part of what the model reads when deciding which tool fits a given question. Calling the raw `llm.invoke(...)` without going through `create_agent` returns an `AIMessage` with an **empty `tool_calls` list** — tool-calling only activates once the model has been given the tool schemas, which is expected framework behavior and was explicitly verified during development, not treated as a bug.
-
-**Anti-hallucination by design:** the agent's grounding constraint — *always cite tool output, never invent papers or citations* — is written directly into the system prompt (see [Prompt Engineering](#-prompt-engineering)), not left as an implicit hope. `create_agent` manages the full `HumanMessage → AIMessage(tool_calls) → ToolMessage(s) → AIMessage(final)` loop automatically.
-
-**Demonstrated tool selection:**
-
-| Query | Expected tool | Why |
-|---|---|---|
-| *"Find the top 3 research papers on Vision Transformer and summarize them."* | `search_and_summarize` | "find… summarize" maps directly to the summarization rule in the system prompt. |
-| *"What are the main keywords and topics in deep learning for medical imaging?"* | `extract_keywords` | "keywords and topics" maps directly to the keyword-extraction rule. |
-
-These two queries were specifically chosen to validate that tool selection tracks question *phrasing*, not a hardcoded default.
-
+> ⚠️ **The one edge case worth knowing about:** when `k=1`, step 8's output shape silently changes (KeyBERT flattens its return type for single-document input). This is the project's flagship debugging story — full writeup in [Engineering Challenges → 8.1](#engineering-challenges).
 
 ---
 
-## 📝 Prompt Engineering
+## AI Agent Workflow
 
-The agent's behavior is governed almost entirely by one system prompt, kept intentionally short and rule-based rather than open-ended — the goal is *reliable tool selection*, not creative freedom.
+**A note on how this section is framed, upfront:** it would be easy to describe this system as "five independent agents" — a Query Understanding Agent, a Retrieval Agent, a Keyword Extraction Agent, a Summarization Agent, and a Response Assembly Agent — because that's a familiar multi-agent template. But it would also be **inaccurate**, and this project's own design philosophy (see [Engineering Decision 7.14](#engineering-decisions) and [Challenge 8.14](#engineering-challenges)) explicitly argues *against* that shape. What's actually implemented is **one reasoning agent with two tools**, and the five responsibilities below are *stages inside that single agent's tool-calling loop*, not five separate agent processes. That distinction is itself a deliberate, documented architectural decision — and it's a better interview answer than pretending otherwise.
 
-```text
-You are an AI research assistant for Machine Learning ArXiv papers.
-
-You have access to these tools:
-1. search_and_summarize — find and summarize relevant research papers.
-2. extract_keywords — find papers and extract their keyphrases and topics.
-
-Rules:
-- Use search_and_summarize when the user asks to find, summarize, or explain papers.
-- Use extract_keywords when the user asks for keywords, key phrases, topics, or themes.
-- Use both tools when the user wants a comprehensive analysis of a topic.
-- Always ground your final answer in the tool output. Cite paper titles.
-- Never invent papers or citations that are not present in the tool results.
-- Write a clear, concise final response for the user.
-```
-
-**Why it's structured this way:**
-
-- **Explicit tool-selection rules, not implicit intent guessing.** Rather than trusting a small, fast model (`llama-3.1-8b-instant`) to correctly infer intent from an open-ended instruction, the prompt enumerates exact phrasing triggers ("find/summarize/explain" → one tool, "keywords/topics/themes" → the other). This trades a little prompt flexibility for a lot of reliability — critical when the model choice prioritizes speed over raw reasoning capability.
-- **Grounding is a rule, not a hope.** *"Never invent papers or citations that are not present in the tool results"* is stated as a hard constraint, directly addressing the single biggest risk in any LLM-fronted retrieval system: confident, fluent, fabricated citations. The agent's factual universe is explicitly bounded to what its tools actually returned.
-- **`temperature=0`.** The `ChatGroq` instance is configured for deterministic decoding specifically because tool selection is a *classification* decision, not a creative one — consistency matters far more than variety here.
-- **Docstrings double as prompt content.** Each `@tool`-decorated function's docstring (e.g. *"Use this tool when the user asks to find, summarize, or explain research papers"*) is what LangChain surfaces to the model as the tool's description — meaning the tool *interface* and the tool *prompt* are the same artifact, kept in sync by construction rather than by discipline.
-- **How summaries are generated is deliberately *not* left to the agent LLM.** Summarization is delegated entirely to a specialized local model (DistilBART) inside a tool, not asked of the orchestrating LLM directly — see [Engineering Decisions](#-engineering-decisions) for why generalist and specialist responsibilities are kept separate.
-
----
-
-## 🛠️ Tools & Tech Stack
-
-| Tool | Role in Fanite | Why this one |
-|---|---|---|
-| **Sentence-Transformers (`all-MiniLM-L6-v2`)** | Embeds every paper and every query into a shared 384-D vector space | Best available speed/quality tradeoff for consumer-hardware, portfolio-scale retrieval — see [Engineering Decisions](#-engineering-decisions). |
-| **FAISS** | Vector index + nearest-neighbor search engine | `IndexFlatIP` gives *exact*, brute-force cosine similarity (via L2 normalization) at millisecond latency, with zero recall loss — appropriate at Fanite's current scale. |
-| **DistilBART (`sshleifer/distilbart-cnn-12-6`)** | Abstractive summarization of retrieved abstracts | 306M parameters vs. 406M for full `bart-large-cnn`, with a measured 1.24–1.68x inference speedup and near-identical ROUGE scores — see the layer-depth rationale below. |
-| **KeyBERT** | Ranks candidate phrases by semantic similarity to the source document | Reuses the *same* MiniLM model already loaded for retrieval, so keyphrase candidates live in the identical vector space as everything else — one model, multiple jobs. |
-| **KeyphraseCountVectorizer** | Generates KeyBERT's *candidate* phrases via part-of-speech patterns (spaCy) | Replaced manual n-gram + stopword tuning after a direct, measured comparison showed dramatically cleaner output — see [Engineering Decisions](#-engineering-decisions). |
-| **LangChain** | Agent orchestration: `@tool` decoration + `create_agent` tool-calling loop | Handles tool-schema generation, tool-call parsing, tool execution, and the `ToolMessage` conversation loop automatically — no hand-rolled ReAct loop. |
-| **Groq (`ChatGroq`, `llama-3.1-8b-instant`)** | The agent's reasoning "brain" | Fast, free/cheap, tool-calling-capable hosted inference — avoids paying for a commercial LLM API while keeping response latency low. |
-| **Pandas** | Tabular data handling across the whole pipeline | Cleaning, dedup, column construction, CSV persistence, and positional (`.iloc`) lookups tying FAISS results back to human-readable metadata. |
-| **NumPy** | Embedding matrix storage and manipulation | `.npy` is the simplest, fastest way to persist a large `float32` matrix to disk and reload it near-instantly. |
-| **PyTorch** | Backend tensor/device layer for both the embedding model and the summarizer | `torch.cuda.is_available()` drives a single, shared GPU/CPU device decision for the whole pipeline. |
-| **Hugging Face Transformers** | `pipeline("summarization", ...)` abstraction for DistilBART | Handles tokenization, batching, generation, and decoding behind one callable, configurable object. |
-| **Jupyter Notebooks** | Development environment for all three project stages | Fast, visual iteration on embeddings/search/summarization — with the tradeoffs (kernel state, cell execution order) explicitly documented in [Engineering Challenges](#-engineering-challenges). |
-
-> **DistilBART's architecture, explained:** the `12-6` in `distilbart-cnn-12-6` is literal — **12 encoder layers, 6 decoder layers**, distilled down from full BART-large-CNN's 12/12 configuration. This asymmetric cut is intentional: in encoder-decoder generation, the **encoder runs once** per input, while the **decoder runs autoregressively**, once per output token — so decoder depth disproportionately drives total inference latency. Halving decoder depth captures most of the available speedup while leaving the encoder (and therefore input *understanding*) at full capacity, which is why DistilBART keeps summarization quality close to the full model despite being noticeably faster and lighter (306M vs. 406M parameters).
-
-
----
-
-## 🧭 Engineering Decisions
-
-Every non-trivial choice in Fanite was made against at least one rejected alternative. This section explains the *why*, not just the *what*.
-
-<details>
-<summary><b>Why MiniLM instead of a larger embedding model?</b></summary>
-<br/>
-
-`all-MiniLM-L6-v2` was chosen for its speed/quality tradeoff on consumer hardware. Encoding ~50,000 documents (and every query, in real time) needs to stay tractable without a dedicated inference cluster. Larger sentence-transformer models offer marginally higher embedding fidelity, but at meaningfully higher compute/memory cost that isn't justified at this project's scale — this is a conscious "good enough, fast enough" choice, not an oversight.
-</details>
-
-<details>
-<summary><b>Why 384-dimensional embeddings specifically?</b></summary>
-<br/>
-
-384 dimensions is `all-MiniLM-L6-v2`'s native output size — a deliberate midpoint in the embedding-dimensionality tradeoff space: high enough to capture meaningful semantic structure across long-form academic text, low enough to keep both the FAISS index and per-query comparison cost small. Storing 50,000 × 384 `float32` vectors is trivial on consumer hardware; storing 50,000 × 1024+ (typical of larger models) starts to matter.
-</details>
-
-<details>
-<summary><b>Why a Bi-Encoder instead of a Cross-Encoder?</b></summary>
-<br/>
-
-`all-MiniLM-L6-v2` is a **bi-encoder**: it embeds the query and every document *independently*, which is exactly what makes precomputing and indexing 50,000 document vectors possible in the first place — a query only has to be embedded once per search, and compared against pre-built vectors via fast inner-product math.
-
-A **cross-encoder**, by contrast, jointly processes a `(query, document)` pair through a single transformer forward pass to produce a relevance score — generally more *accurate*, because the model can attend across query and document simultaneously, but it cannot be precomputed: every candidate document would need its own forward pass *at query time*, which doesn't scale to a 50,000-document corpus searched interactively.
-
-Fanite uses a bi-encoder for the reason every large-scale retrieval system does: it's the only architecture compatible with a precomputed vector index. Cross-encoder **reranking** of the top-K bi-encoder results — combining the bi-encoder's scale with the cross-encoder's accuracy — is a documented future improvement (see [Roadmap](#-future-improvements--roadmap)), not something skipped by accident.
-</details>
-
-<details>
-<summary><b>Why FAISS <code>IndexFlatIP</code> instead of an approximate index?</b></summary>
-<br/>
-
-`IndexFlatIP` performs **exact**, brute-force inner-product search — no clustering, no quantization, no recall loss. At Fanite's current scale (tens of thousands of vectors), exact search is still extremely fast; introducing an approximate index type (e.g. `IndexIVFFlat`) now would trade away exactness for a speed benefit the system doesn't yet need. That tradeoff is explicitly deferred to when/if the corpus scales into the millions — see [Roadmap](#-future-improvements--roadmap).
-</details>
-
-<details>
-<summary><b>Why cosine similarity instead of Euclidean distance?</b></summary>
-<br/>
-
-Cosine similarity measures the **direction** two vectors point in — i.e., semantic content — while Euclidean distance is sensitive to vector **magnitude**, which can vary with factors unrelated to meaning (like document length). A short, punchy abstract and a long, detailed one on the same topic should score as similar; Euclidean distance would risk penalizing that, cosine similarity does not.
-</details>
-
-<details>
-<summary><b>Why L2 normalization?</b></summary>
-<br/>
-
-FAISS has no dedicated cosine-similarity index type — but it does have a very fast native **inner product** operation. The identity `L2-normalized vectors + inner product = cosine similarity` lets Fanite get exact cosine-similarity ranking while still using FAISS's fastest native operation, rather than computing cosine similarity manually (as validated once, at small scale, with scikit-learn during early development) — which does not scale to full-corpus search.
-</details>
-
-<details>
-<summary><b>Why DistilBART instead of full BART-large-CNN?</b></summary>
-<br/>
-
-`sshleifer/distilbart-cnn-12-6` (12 encoder layers, 6 decoder layers, 306M parameters) provides an excellent tradeoff between summarization quality, inference speed, and memory footprint versus the full `bart-large-cnn` checkpoint (12/12 layers, 406M parameters). Because **decoder computation dominates inference latency** in encoder-decoder generation — the encoder runs once, the decoder runs once *per generated token* — halving decoder depth captures a large share of the available speedup (a measured ~1.24–1.68x, depending on benchmark) while the full-depth encoder preserves strong input understanding, keeping ROUGE scores close to the full model. For short academic abstracts running on consumer hardware, this is the right side of the tradeoff.
-</details>
-
-<details>
-<summary><b>Why batch summarization instead of summarizing each abstract individually?</b></summary>
-<br/>
-
-Looping the summarizer once per retrieved paper means paying tokenization, padding, host↔GPU transfer, and kernel-launch overhead **independently, `k` times**. A single batched call (`summarizer(all_abstracts, batch_size=k, ...)`) amortizes that fixed overhead across the whole batch and lets the GPU genuinely parallelize the forward pass — this is the direct fix for a Hugging Face runtime warning about sequential pipeline calls on GPU, and it measurably reduces end-to-end query latency (see [Performance Optimizations](#-performance-optimizations)).
-</details>
-
-<details>
-<summary><b>Why <code>KeyphraseCountVectorizer</code> instead of raw n-grams?</b></summary>
-<br/>
-
-Simple `ngram_range=(1,3)` candidate generation produced a large volume of meaningless or fragmented phrases — prepositions leaking in, phrases cut off mid-thought. Measured directly during development: raw n-grams with no stopword filtering produced **223 candidates at ~10.8% clean**; adding English stopword filtering improved that to **174 candidates at ~13.8% clean**. Switching candidate generation to `KeyphraseCountVectorizer` — which first extracts *linguistically valid* candidate phrases using part-of-speech patterns, before KeyBERT ranks them semantically — cut the candidate pool to **25 candidates at 100% clean, by construction**. This is a quantified, not asserted, quality improvement.
-</details>
-
-<details>
-<summary><b>Why combine title + abstract into one field?</b></summary>
-<br/>
-
-A title alone can lack context; an abstract alone can miss the high-signal terms an author deliberately chose for the title. Concatenating them (`paper_text = title + " " + abstract`) captures both in a single embedding, and — just as importantly — **halves** storage and per-query comparison cost versus maintaining two separate embeddings (and some score-fusion logic) per paper.
-</details>
-
-<details>
-<summary><b>Why <code>random_state=42</code>?</b></summary>
-<br/>
-
-The corpus is sampled down to 50,000 rows via `df.sample(n=50000, random_state=42)`, replacing an earlier `df.head(50000)` slice. ArXiv IDs are date-ordered, so taking a literal first-N slice risks skewing the sample toward earlier submissions — a sampling bias. A fixed `random_state` makes the random sample **exactly reproducible** across notebook re-runs, which matters because every cached artifact downstream (embeddings, FAISS index) is only valid for that *exact* sample.
-</details>
-
-<details>
-<summary><b>Why one embedding per paper?</b></summary>
-<br/>
-
-Rather than separate title-vector and abstract-vector embeddings per paper (which would need score-fusion logic and double the index size), Fanite embeds the single combined `paper_text` field once. Simpler, cheaper, and — per the title+abstract rationale above — loses no meaningful signal.
-</details>
-
-<details>
-<summary><b>Why these specific preprocessing choices?</b></summary>
-<br/>
-
-Null-checking before any transformation (rather than assuming clean data), deduplicating on abstract text (not title, which can legitimately repeat across preprint versions), collapsing *all* whitespace via regex rather than just newlines (PDF-extracted academic text carries inconsistent line breaks tied to column width, not sentence structure), and filtering out very short combined text (too little content to carry meaningful semantics) — each preprocessing step targets a specific, real failure mode of this particular corpus rather than being copy-pasted boilerplate.
-</details>
-
-<details>
-<summary><b>Why split the project across multiple notebooks?</b></summary>
-<br/>
-
-Fanite is intentionally split into three stages — data acquisition & embedding generation, FAISS search & enrichment prototyping, and agent orchestration — rather than one monolithic notebook. This:
-
-- **Reduces memory usage** — each notebook only loads the models/data it actually needs, instead of every model from every stage sitting in RAM/VRAM simultaneously.
-- **Avoids unnecessary model reloads** — the expensive embedding pass runs once and is cached; downstream notebooks load cached artifacts instead of re-instantiating and re-running the encoder.
-- **Prevents kernel crashes** — keeping the embedding-heavy stage isolated from the agent/LLM stage means a crash or restart in one doesn't force re-running unrelated, expensive work.
-- **Improves modularity** — once the FAISS + retrieval logic stabilized, it was extracted into a reusable `src/search.py` module (`ArxivSearchEngine`) rather than copy-pasted into the agent notebook, so both notebooks share one source of truth.
-- **Makes debugging significantly easier** — isolating each concern (data quality, retrieval quality, agent behavior) into its own notebook meant bugs could be reproduced and fixed in the smallest possible surface area, rather than debugged inside a single sprawling script.
-</details>
-
-<details>
-<summary><b>Why a single orchestrating agent instead of a multi-agent swarm?</b></summary>
-<br/>
-
-An earlier design considered wrapping the local DistilBART summarizer as a LangChain `HuggingFacePipeline` LLM object — effectively treating it as its own "agent." This was explicitly removed. DistilBART is a narrow, specialized summarization model, not a general instruction-following or tool-calling model — it has no business *deciding* what to do, only *executing* a well-defined transformation once told to. Fanite's final architecture keeps exactly one model (Groq's `llama-3.1-8b-instant`) responsible for reasoning and tool selection, with DistilBART and KeyBERT scoped purely as tool backends. This is simpler to reason about, cheaper to run, and avoids the coordination overhead a genuine multi-agent system would introduce for a task that doesn't need it.
-</details>
-
-
----
-
-## 📦 Data Pipeline
-
-| Step | Operation | Detail |
-|---|---|---|
-| 1 | **Load** | `datasets.load_dataset("CShorten/ML-ArXiv-Papers")` — an Arrow-backed, memory-mapped dataset of ~117,000–118,000 `cs.LG` paper title/abstract pairs. |
-| 2 | **Convert to pandas** | `.to_pandas()` materializes the split for convenient tooling (`.iloc`, CSV export) at a dataset size where the memory-mapping tradeoff doesn't yet matter (see [Engineering Challenges](#-engineering-challenges) for when it would). |
-| 3 | **Column pruning** | Keep only `title` and `abstract`; drop leftover index artifacts from the source CSV export. |
-| 4 | **Reproducible sampling** | `df.sample(n=50000, random_state=42)` — see [Engineering Decisions](#-engineering-decisions) for why this replaced a date-biased `.head(50000)`. |
-| 5 | **Missing-value check** | `df.isnull().sum()` — verified clean for this sample; the pipeline explicitly reasons through `dropna(how="all")` vs. `dropna(how="any")` semantics even though neither was needed here. |
-| 6 | **Duplicate removal** | `df.drop_duplicates(subset=["abstract"])` — dedup on abstract text, not title, since titles can legitimately repeat across preprint revisions. |
-| 7 | **`paper_text` construction** | `df["paper_text"] = df["title"] + " " + df["abstract"]` — the single field that actually gets embedded (see [Engineering Decisions](#-engineering-decisions)). |
-| 8 | **Whitespace cleanup** | `.str.replace(r"\s+", " ", regex=True).str.strip()` — collapses all whitespace runs (including PDF-extraction-artifact newlines) to single spaces. |
-| 9 | **Short-text filtering** | `df[df["paper_text"].str.len() > 30]` — drops entries too short to carry meaningful semantic content, applied *after* cleanup so it operates on true cleaned length. |
-| 10 | **Index reset** | `df = df.reset_index(drop=True)` — re-establishes a clean, gap-free `0..N-1` index so DataFrame row order stays aligned with the embeddings array that comes next. **Non-negotiable** — see [Engineering Challenges](#-engineering-challenges). |
-| 11 | **Embedding generation** | `model.encode(df["paper_text"].tolist(), batch_size=32, show_progress_bar=True)` — produces a `(N, 384)` `float32` matrix; `batch_size=32` bounds memory usage during encoding. |
-| 12 | **Cache to disk** | `np.save(...)` for the embeddings matrix, `df.to_csv(...)` for the cleaned DataFrame — both guarded by an `os.path.exists()` check so this multi-minute pass runs exactly once. |
-
----
-
-## 🔎 Search Pipeline
+### The five responsibilities (inside one agent)
 
 ```mermaid
-flowchart LR
-    Q["Query String"] --> ENC["model.encode([query])<br/>→ (1, 384)"]
-    ENC --> NORM["faiss.normalize_L2()<br/>unit-length vector"]
-    NORM --> SRCH["index.search(query_embedding, k)"]
-    SRCH --> D["D — similarity scores<br/>sorted descending"]
-    SRCH --> I["I — positional indices"]
-    I --> LOOK["df.iloc[idx]<br/>title + abstract"]
-    D --> RANK["Ranked Top-K Papers"]
-    LOOK --> RANK
+flowchart TD
+    U["👤 User Question<br/>natural language"] --> R["🧭 1 · Query Understanding + Tool Selection<br/>Agent LLM — Groq llama-3.1-8b-instant<br/>reads SYSTEM_PROMPT + question"]
+    R -->|"find / summarize / explain"| T1["🔎 2 · Retrieval<br/>(inside each tool)<br/>ArxivSearchEngine.search(query, k)"]
+    R -->|"keywords / topics / themes"| T1
+    T1 --> T2A["📝 3 · Summarization<br/>(inside search_and_summarize)<br/>DistilBART, batched"]
+    T1 --> T2B["🏷️ 4 · Keyword Extraction<br/>(inside extract_keywords)<br/>KeyBERT + MMR, batched"]
+    T2A --> M["📨 ToolMessage(s)<br/>formatted text block per tool"]
+    T2B --> M
+    M --> S["✍️ 5 · Response Assembly / Synthesis<br/>Agent LLM re-invoked on full conversation<br/>grounded, cited, never invented"]
+    S --> F["🎯 Final Answer"]
 
-    style Q fill:#1f6feb,stroke:#58a6ff,color:#fff
-    style RANK fill:#2ea043,stroke:#3fb950,color:#fff
+    style R fill:#312e81,stroke:#818cf8,color:#fff
+    style S fill:#312e81,stroke:#818cf8,color:#fff
+    style F fill:#064e3b,stroke:#34d399,color:#fff
 ```
 
-At startup, the cleaned CSV, cached `.npy` embeddings, and the MiniLM model are all loaded once — reloading cached embeddings takes about a second versus the tens of minutes required to regenerate them. Every subsequent query only pays for: query encoding → L2 normalization → a FAISS lookup (a few milliseconds, even across the full index) → positional metadata lookup. No additional re-ranking step runs beyond FAISS's own similarity-score ordering.
-
----
-
-## 🔑 Keyword Extraction Pipeline
-
-1. **Model setup** — `KeyBERT(model=model)`, deliberately reusing the same MiniLM instance already used for retrieval, so keyphrase-candidate embeddings live in the identical vector space as documents and queries.
-2. **Candidate generation** — `KeyphraseCountVectorizer()` proposes candidate phrases using part-of-speech tag patterns (via spaCy's `en_core_web_sm`), producing grammatically complete phrases *by construction* — no manual n-gram range or stopword list to tune.
-3. **Semantic ranking** — KeyBERT embeds each candidate phrase and scores it by cosine similarity to the source document's own embedding; the candidates whose embeddings point closest to the document's are the most representative.
-4. **MMR diversification** — `use_mmr=True, diversity=0.5` re-ranks the candidate pool to balance *relevance* (similarity to the document) against *diversity* (dissimilarity to already-chosen keywords), preventing the final list from being dominated by near-duplicate phrases like "deep learning" and "deep neural."
-5. **Batched extraction** — all `k` retrieved abstracts are passed to `extract_keywords()` in a **single call**, not looped per paper, mirroring the summarization pipeline's batching strategy.
-6. **Edge-case normalization** — KeyBERT's output shape changes for a single-document batch (see [Engineering Challenges](#-engineering-challenges)); an explicit guard re-wraps it to the expected nested shape before results are assembled.
-
----
-
-## 📝 Summarization Pipeline
-
-1. **Model setup** — `pipeline("summarization", model="sshleifer/distilbart-cnn-12-6", device=...)`, with device selection derived from a single shared `torch.cuda.is_available()` check.
-2. **Input gathering** — every retrieved abstract's text and approximate word count (`len(text.split())`, a cheap proxy for token count) are collected across the batch.
-3. **Dynamic `min_length` / `max_length`** — because one batched call only accepts a single scalar bound for the whole batch, `dynamic_max`/`dynamic_min` are computed from the **shortest** abstract in the batch, guaranteeing the model is never asked for a summary longer than its shortest source text.
-4. **Batched generation** — `summarizer(all_abstracts, max_length=dynamic_max, min_length=dynamic_min, batch_size=k, do_sample=False)` — one call for the whole batch. `do_sample=False` selects deterministic decoding, so summaries are reproducible.
-5. **Output consumption** — the batched call returns a *flat* list of `{"summary_text": ...}` dicts (not a list of single-item lists, unlike the single-string call form) — a shape difference that mattered a great deal during development (see [Engineering Challenges](#-engineering-challenges)).
-
-
----
-
-## ⚙️ Performance Optimizations
-
-| Optimization | Problem it solves | Impact | Tradeoff |
+| # | Responsibility | Who actually does it | Details |
 |---|---|---|---|
-| **Batch summarization** | Per-paper summarizer calls pay tokenization/padding/transfer/kernel-launch overhead `k` times over | One GPU round-trip per query instead of `k`; eliminated Hugging Face's "sequential pipeline calls" warning | `max_length`/`min_length` become shared scalars for the whole batch, capped by the shortest abstract |
-| **Notebook modularization** | Retrieval logic risked duplication/drift between the search notebook and the agent notebook | `src/search.py`'s `ArxivSearchEngine` is a single source of truth, imported by both | One extra layer of indirection vs. a fully self-contained notebook |
-| **FAISS `IndexFlatIP` + L2 norm** | Per-query scikit-learn cosine similarity doesn't scale to a 50K-document corpus | Full-corpus search in single-digit milliseconds | Exact search only stays optimal up to a certain scale — see [Roadmap](#-future-improvements--roadmap) |
-| **MiniLM embeddings** | Encoding 50K+ documents (and every query) must stay fast on consumer hardware | Fast batch encoding, near-instant query encoding | Lower embedding ceiling than a larger model |
-| **DistilBART** | Full BART-large-CNN is ~1.6GB and noticeably slower to load/run | ~5x smaller checkpoint, faster load and inference | Some ceiling on summary nuance vs. the full model |
-| **`KeyphraseCountVectorizer`** | Raw n-gram candidates were mostly noise (10.8–13.8% clean) | 25 candidates, 100% clean by construction | Adds a spaCy + `en_core_web_sm` dependency |
-| **Precomputed embeddings** | Encoding the full corpus takes tens of minutes | Cached `.npy` load takes ~1 second on every subsequent run | Cache is scoped to a specific sample/model — must be regenerated if either changes |
-| **Positional metadata lookup** | Naive lookups risk paper/embedding misalignment after row-dropping ops | `reset_index(drop=True)` + `.iloc` guarantees correctness | Requires discipline — every row-dropping operation must be followed by a reset |
+| 1 | **Query Understanding & Tool Selection** | The agent LLM (`ChatGroq`, `llama-3.1-8b-instant`), guided by `SYSTEM_PROMPT` | Reads the user's message plus the system prompt's decision rules and decides which tool(s) to call and with what arguments (`query`, `k`). This is real LLM reasoning, not keyword-matching — see [Prompt Engineering](#prompt-engineering). |
+| 2 | **Retrieval** | `ArxivSearchEngine.search(query, k)`, called from *inside* whichever tool the agent invoked | Identical embed → normalize → FAISS-search → metadata-lookup logic as the direct pipeline. Not a separate agent — a plain method call the tool makes before doing its own job. |
+| 3 | **Summarization** | DistilBART, running *inside* the `search_and_summarize` tool | Only executes if the agent decided this question needs paper summaries. |
+| 4 | **Keyword Extraction** | KeyBERT + MMR, running *inside* the `extract_keywords` tool | Only executes if the agent decided this question needs topics/themes. Both 3 and 4 run if the agent judges the question needs "a comprehensive analysis." |
+| 5 | **Response Assembly / Synthesis** | The same agent LLM, invoked a second time by LangChain's agent loop | Reads the tool result(s) — now `ToolMessage` objects in the conversation — and produces the final natural-language answer, instructed to ground every claim in tool output and cite paper titles. |
+
+### Why this shape, not five separate agents
+
+Splitting reasoning, retrieval, summarization, keyword extraction, and synthesis into five *independent* agents would mean five separate LLM-driven decision loops coordinating with each other — more orchestration surface area, more latency, more places for one component to misunderstand another's output, for no measurable benefit at this problem's scale. The project's actual design keeps exactly **one** component that reasons about intent (the Groq-backed agent LLM) and treats DistilBART and KeyBERT strictly as **narrow tool backends** — specialized, non-conversational models that execute a well-defined transformation once called, and never decide anything themselves. An earlier design that wrapped the local summarizer as a LangChain `HuggingFacePipeline` **LLM** object (so it could act as a reasoning component) was explicitly built, reconsidered, and removed for exactly this reason — full story in [Challenge 8.14](#engineering-challenges).
+
+### Tool contracts
+
+| Tool | Signature | Responsibility |
+|---|---|---|
+| `search_and_summarize` | `(query: str, k: int = 5) -> str` | Semantic search **+** batched DistilBART summarization, formatted as a plain-text block (rank, score, title, summary, abstract preview). |
+| `extract_keywords` | `(query: str, k: int = 5) -> str` | Semantic search **+** batched KeyBERT/MMR keyphrase extraction, formatted as a plain-text block. |
+
+Each tool's **docstring is its description** — this is standard LangChain `@tool` convention, but worth calling out explicitly: the docstring isn't just documentation, it's functionally part of the prompt the agent LLM reads when deciding whether a given tool fits the user's question. Both tools return **strings**, not Python objects — because a tool's return value becomes a `ToolMessage` that the LLM itself reads as text in the next reasoning step, so the direct pipeline's dict-based output and the agent pipeline's text-block output are deliberately different shapes for the same underlying data.
+
+**Tool calling only activates through `create_agent`.** Calling the raw `llm.invoke(...)` directly — without going through `create_agent` — returns an `AIMessage` with an **empty `tool_calls` list**, because tool calling is a capability exposed through LangChain's binding layer, which only wires up once the model has been given the tool schemas. This was explicitly verified (not assumed) by sanity-testing the raw LLM with a plain, tool-irrelevant question before any tools were bound.
 
 ---
 
-## 🐞 Engineering Challenges
+## Prompt Engineering
 
-Every one of these is a real debugging story from building Fanite — not a "bug fixed, moving on." Each includes what actually happened, how it was diagnosed, and what it taught.
+Two entirely different "steering" mechanisms are in play here, deliberately kept distinct:
 
-<details>
-<summary><b>Challenge 1 — KeyBERT's API Polymorphism (a silently shape-shifting return type)</b></summary>
+- **The agent LLM (Groq)** is steered with a **system prompt** — natural-language instructions, because it's a general reasoning model making judgment calls.
+- **The local models (DistilBART, KeyBERT)** are steered with **generation parameters** (`max_length`, `min_length`, `diversity`, `top_n`, `do_sample`) — because they're narrow, non-conversational models; there's no "prompt" to write for a summarization pipeline, only knobs to tune.
+
+### The system prompt's rules
+
+The agent's `SYSTEM_PROMPT` encodes explicit, enumerable decision rules rather than leaving tool selection to implicit vibes:
+
+```text
+- Use `search_and_summarize` when the user asks to find, summarize, or explain papers.
+- Use `extract_keywords` when the user asks for keywords, key phrases, topics, or themes.
+- Use BOTH tools when the user wants a comprehensive analysis of a topic.
+- Always ground the final answer in tool output; cite paper titles.
+- Never invent papers or citations not present in the tool results.
+- Write a clear, concise final response.
+```
+
+### How hallucination is reduced
+
+The last two rules above are a deliberate **anti-hallucination / grounding constraint**, baked directly into the prompt rather than hoped for implicitly. The agent's factual universe is explicitly bounded to what its own tools actually returned in *this* conversation — it is told, in plain language, that inventing a paper title or a citation that isn't present in a `ToolMessage` is against the rules. This matters because the underlying LLM has no independent access to the ArXiv corpus; the only ArXiv-grounded facts available to it are whatever the retrieval tools handed back.
+
+**Validation, concretely demonstrated:** two test queries were chosen specifically to probe whether the agent's tool-selection reasoning maps question *phrasing* to the *correct* tool rather than defaulting to one tool or guessing:
+
+| Test query | Expected tool | Why |
+|---|---|---|
+| *"Find the top 3 research papers on Vision Transformer and summarize them."* | `search_and_summarize` | Phrasing ("find… summarize") maps to summarization intent. |
+| *"What are the main keywords and topics in deep learning for medical imaging?"* | `extract_keywords` | Phrasing ("keywords and topics") maps to keyword-extraction intent. |
+
+### How summaries are generated
+
+Summaries are **not** prompted into existence — DistilBART is an abstractive summarization model tuned via generation parameters, not natural-language instructions. The key engineering decision here is that `max_length`/`min_length` are computed **dynamically per query batch** from the real word counts of the retrieved abstracts (details in [Summarization Pipeline](#summarization-pipeline)), specifically so the parameters never ask for something the shortest abstract in the batch can't support. `do_sample=False` is set deliberately — greedy/beam-style deterministic decoding, so the same query reliably produces the same summary rather than varying run to run.
+
+---
+
+## Tools Used
+
+Not a dependency list — every tool below was chosen over a real alternative, for a reason.
+
+| Tool | Role in this project | Why this, specifically |
+|---|---|---|
+| **`sentence-transformers` / `all-MiniLM-L6-v2`** | The embedding backbone for both documents and queries | Strong speed/quality tradeoff for locally-run, consumer-hardware inference; a well-established default in the sentence-transformers ecosystem. Reused as KeyBERT's backend too, so every embedding-based computation in the project shares one vector space. |
+| **FAISS (`IndexFlatIP`)** | The vector database / nearest-neighbor engine | Exact, brute-force inner-product search — no approximation, no recall loss — which is still extremely fast at tens of thousands of vectors. Persisted to disk so it's built once. |
+| **DistilBART (`sshleifer/distilbart-cnn-12-6`)** | Abstractive summarization of retrieved abstracts | ~5× smaller checkpoint than full `facebook/bart-large-cnn` (~300MB vs. ~1.6GB) — faster to download and run, an appropriate tradeoff for short academic abstracts on consumer hardware. |
+| **KeyBERT** | Keyphrase extraction, ranked by embedding similarity | Reuses the *same* MiniLM model already loaded for document/query embedding — no second embedding space to maintain. |
+| **`KeyphraseCountVectorizer`** | Candidate-phrase generation for KeyBERT | POS-pattern-based candidates via spaCy instead of raw n-gram windows — measured at 100% grammatically clean candidates vs. ~11–14% for manual n-grams (see [Engineering Decisions](#engineering-decisions)). |
+| **Pandas** | Tabular data handling throughout | Loading the HF dataset into a DataFrame, column selection, null-checking, deduplication, regex whitespace cleanup, index management, CSV persistence. |
+| **NumPy** | Embedding matrix storage | `.npy` persistence for the `(N, 384)` `float32` embeddings array — the caching layer that turns a ~26-minute job into a ~1-second load. |
+| **Torch (PyTorch)** | Device detection | `torch.cuda.is_available()` / `torch.cuda.get_device_name(0)` drive device selection for both the SentenceTransformer and the Hugging Face pipeline, reconciling their different device-argument conventions in one place. |
+| **Transformers (Hugging Face)** | Summarization pipeline abstraction | `pipeline("summarization", ...)` handles tokenization, batching, generation, and decoding behind one callable, configured with `max_length`, `min_length`, `batch_size`, `do_sample=False`. |
+| **LangChain** | Agent orchestration | `@tool` decoration turns plain Python functions into LLM-callable tools with schemas derived from their signatures/docstrings; `create_agent(...)` builds the full tool-calling reasoning loop internally. |
+| **Groq / `ChatGroq`** | The agent's reasoning "brain" | A fast, tool-calling-capable hosted chat model (`llama-3.1-8b-instant`) chosen specifically as a free/low-latency alternative to a commercial LLM API for the orchestration layer. |
+| **Jupyter** | Development environment, split across 3 notebooks | Interactive iteration on retrieval, summarization, and keyword extraction — with the tradeoffs and gotchas of that execution model treated as first-class engineering concerns, not incidental (see [Challenge 8.1](#engineering-challenges)). |
+
+---
+
+## Engineering Decisions
+
+For each decision below: **what** was chosen, **why**, and what alternative was rejected (and why).
+
+<details open>
+<summary><strong>7.1 — <code>all-MiniLM-L6-v2</code> as the embedding model</strong></summary>
+
 <br/>
 
-**What happened:** `kw_model.extract_keywords()` returns a **different nested structure depending on batch size**. For a batch of 2+ documents, it returns `List[List[Tuple[str, float]]]` — one inner list of keyword tuples per document. For a batch of exactly **one** document, it silently strips the outer list and returns a **flat** `List[Tuple[str, float]]` instead.
+- **Chosen:** a small, fast, general-purpose sentence-transformer producing 384-dim embeddings.
+- **Why:** strong speed/quality tradeoff for a locally-run, consumer-hardware (RTX 3050-class GPU / CPU fallback) project; a well-established default in the sentence-transformers ecosystem.
+- **Rejected alternative:** larger sentence-transformer models — higher embedding quality, but heavier compute/memory for encoding ~50,000 documents plus every query in real time. The lighter model keeps that tractable without dedicated infrastructure.
+</details>
 
-**How it was investigated:** not by guessing — by direct type inspection. `print(type(keywords))` and structural comparison between `k=1` and `k≥2` runs revealed the shape change immediately once actually checked, rather than assumed to be stable.
+<details>
+<summary><strong>7.2 — DistilBART over full BART-large-CNN</strong></summary>
 
-**Why normalizing the output shape was the right fix:** a guard was added immediately after the KeyBERT call to re-wrap a single-document result back into the expected nested shape:
+<br/>
+
+- **Chosen:** `sshleifer/distilbart-cnn-12-6` (~300MB).
+- **Why:** roughly 5× smaller than `facebook/bart-large-cnn` (~1.6GB) — faster to download and run.
+- **Rejected alternative:** full BART-large-CNN — the added size/latency wasn't justified by the marginal summary-quality gain for short academic abstracts at this project's scale.
+- **The architectural tradeoff, precisely:** DistilBART keeps 12 encoder layers but reduces to 6 decoder layers. Because **decoder computation dominates inference latency** in encoder-decoder summarization models (the decoder runs autoregressively, token by token, while the encoder runs once), halving decoder depth measurably improves response time while preserving strong summarization quality — a deliberately asymmetric distillation, not a uniform shrink.
+</details>
+
+<details>
+<summary><strong>7.3 — Batch summarization (one batched call vs. a per-item loop)</strong></summary>
+
+<br/>
+
+- **Chosen:** collect all `k` abstracts, call the summarizer pipeline once with a list input and `batch_size=k`.
+- **Why:** each single-item pipeline call independently pays tokenization, padding, host→GPU transfer, and kernel-launch overhead. Batching amortizes that fixed cost across all `k` items and lets the GPU actually parallelize the forward pass. This was also the direct fix for Hugging Face's own runtime warning about sequential pipeline calls on GPU (full story in [Challenge 8.3](#engineering-challenges)).
+- **Rejected alternative:** the original per-paper loop (`for idx in I[0]: summarizer(abstract)`) — measurably slower at any meaningful `k`, and the literal source of a library-emitted warning.
+</details>
+
+<details>
+<summary><strong>7.4 — FAISS <code>IndexFlatIP</code> (exact search) over an approximate index</strong></summary>
+
+<br/>
+
+- **Chosen:** `IndexFlatIP` — flat, uncompressed, brute-force inner-product search.
+- **Why:** at tens of thousands of vectors, brute-force search is still extremely fast, and it guarantees **exact** nearest neighbors with zero recall loss from approximation.
+- **Rejected (for now) alternative:** `IndexIVFFlat` or another clustered/approximate index — explicitly identified as the right choice **if** the corpus scales to millions of papers, where brute-force search would become the bottleneck. Deliberately not adopted prematurely — see [Future Improvements](#future-improvements).
+</details>
+
+<details>
+<summary><strong>7.5 — L2 normalization + inner product as a cosine-similarity substitute</strong></summary>
+
+<br/>
+
+- **Chosen:** normalize every embedding to unit length (`faiss.normalize_L2`) before indexing/searching, and use `IndexFlatIP` as the index type.
+- **Why:** FAISS has no dedicated cosine-similarity index type, but it does have a very fast native inner-product operation. The identity **L2 normalization + inner product = cosine similarity** gets exact cosine-similarity ranking while still using FAISS's fastest native operation.
+- **Rejected alternative:** computing cosine similarity manually per query with scikit-learn's `cosine_similarity` — this is in fact what was used in `EDA.ipynb` to validate the concept on a handful of vectors, but it's far too slow at full corpus scale, hence the move to FAISS for production search.
+</details>
+
+<details>
+<summary><strong>7.6 — Cosine similarity over Euclidean distance</strong></summary>
+
+<br/>
+
+- **Chosen:** cosine similarity (via the FAISS inner-product identity above) as the similarity metric.
+- **Why:** cosine similarity measures vector **direction** (semantic content); Euclidean distance is sensitive to vector **magnitude**, which can be affected by document length rather than meaning. A short summary and a long thesis on the same topic should score as similar even if their raw embedding magnitudes differ.
+- **Rejected alternative:** raw Euclidean/L2 distance — conceptually wrong here, since it would falsely penalize documents of different lengths that are nonetheless semantically aligned.
+</details>
+
+<details>
+<summary><strong>7.7 — <code>KeyphraseCountVectorizer</code> over manual n-gram configuration</strong></summary>
+
+<br/>
+
+- **Chosen:** `KeyphraseCountVectorizer` (POS-pattern-based candidate generation via spaCy) as KeyBERT's candidate generator.
+- **Why — quantified, not guessed:** raw `ngram_range=(1,3)` with `stop_words=None` produced 223 candidate phrases, only ~10.8% clean/complete. Adding `stop_words='english'` improved this to 174 candidates at ~13.8% clean. Switching to `KeyphraseCountVectorizer` produced only 25 candidates — **100% grammatically clean by construction** (valid noun phrases). This is a directly measured before/after comparison.
+- **Rejected alternative:** manually tuned `ngram_range` + stopword lists — superseded once the cleaner, higher-precision, lower-maintenance POS-based alternative was identified; the added spaCy dependency was judged worth it.
+</details>
+
+<details>
+<summary><strong>7.8 — MMR (Maximal Marginal Relevance) for keyword diversity</strong></summary>
+
+<br/>
+
+- **Chosen:** `use_mmr=True, diversity=0.5` inside `kw_model.extract_keywords(...)`.
+- **Why:** without diversification, top-N keyphrase lists tend to be dominated by near-duplicate phrases ("deep learning" *and* "deep neural" both appearing) — wasting slots on redundant information. MMR balances *relevance* (similarity to the document) against *diversity* (dissimilarity to already-selected keywords). `diversity=0` = pure relevance ranking; `diversity=1` = maximum diversity; `0.5` is a deliberate balanced midpoint.
+- **Rejected alternative:** plain top-N-by-relevance ranking — used in earlier, simpler attempts, superseded once redundant near-duplicate phrases were observed in practice.
+</details>
+
+<details>
+<summary><strong>7.9 — One embedding per paper (title + abstract combined)</strong></summary>
+
+<br/>
+
+- **Chosen:** `paper_text = title + " " + abstract`, embedded once per paper.
+- **Why:** a title alone can lack depth/context; an abstract alone can miss the punchy, high-signal terms an author deliberately put in the title. Embedding the concatenation captures both, and **halves** storage and per-query comparison cost versus maintaining two separate embeddings per paper.
+- **Rejected alternative:** title-only embeddings, abstract-only embeddings, or dual embeddings with score fusion — all rejected in favor of the simpler, cheaper, single combined representation.
+</details>
+
+<details>
+<summary><strong>7.10 — Reproducible random sampling over a deterministic slice</strong></summary>
+
+<br/>
+
+- **Chosen:** `df.sample(n=50000, random_state=42)`, replacing an earlier `df.head(50000)`.
+- **Why:** ArXiv IDs are date-based, so taking the first 50,000 rows in raw dataset order risks skewing the sample toward earlier submissions. A fixed `random_state=42` makes the random sample **exactly reproducible** across re-runs — which matters because the cached embeddings/FAISS index are only valid for that exact sample of rows.
+- **Rejected alternative:** the original `.head(50000)` — kept in the notebook as a commented-out "Before" line, specifically to document the change and the reasoning behind it. Full debugging-style writeup in [Challenge 8.8](#engineering-challenges).
+</details>
+
+<details>
+<summary><strong>7.11 — Notebook modularization: extracting <code>src/search.py</code></strong></summary>
+
+<br/>
+
+- **Chosen:** once the FAISS + SentenceTransformer retrieval logic stabilized in `Search_Engine.ipynb`, it was pulled into a reusable `ArxivSearchEngine` class in `src/search.py`, imported by `RAG_Pipeline.ipynb`.
+- **Why:** avoids duplicating (and risking drift between) the same FAISS-loading/searching code across notebooks; the LangChain tools call `searcher.search(query, k)` rather than re-implementing embedding + normalization + search inline.
+- **Rejected alternative:** copy-pasting the retrieval cells into the new notebook — rejected in favor of a proper shared module once the logic stopped actively changing.
+</details>
+
+<details>
+<summary><strong>7.12 — Precomputed / cached embeddings and FAISS index</strong></summary>
+
+<br/>
+
+- **Chosen:** both the embeddings matrix (`.npy`) and the FAISS index are saved to disk on first computation and loaded thereafter, guarded by `os.path.exists(...)` checks.
+- **Why:** encoding the full corpus is estimated at tens of minutes (a 15,000-row batch: ~26 minutes at `batch_size=32`); caching turns every subsequent run into a near-instant disk load.
+- **Rejected alternative:** recomputing embeddings on every run — wasteful, rejected outright. (This caching decision has its own downstream tradeoff — see [Challenge 8.2](#engineering-challenges).)
+</details>
+
+<details>
+<summary><strong>7.13 — Tool abstraction (<code>@tool</code>) and a LangChain agent, instead of a hardcoded router</strong></summary>
+
+<br/>
+
+- **Chosen:** wrap `search_and_summarize` and `extract_keywords` as LangChain `@tool` functions, bound to a `create_agent(...)` agent, rather than calling them directly from application code.
+- **Why:** lets a general-purpose conversational LLM decide, per question, which capability is relevant — the difference between a fixed pipeline (always search + summarize + extract) and an adaptive assistant that can serve narrower requests or broader ones based on how the question is actually phrased.
+- **Rejected alternative:** a hardcoded `if/else` router based on keyword matching in the question (`if 'keyword' in query: ...`) — rejected in favor of letting an LLM handle the fuzzier, more general intent classification.
+</details>
+
+<details>
+<summary><strong>7.14 — Separating the agent LLM from the tool-backend models</strong></summary>
+
+<br/>
+
+- **Chosen:** the reasoning/orchestration LLM (Groq) is a completely different model from the tool-backend NLP models (DistilBART, KeyBERT). An earlier approach that wrapped the local summarizer as a LangChain `HuggingFacePipeline` **LLM object** was explicitly removed.
+- **Why:** DistilBART is a specialized summarization model, not a general instruction-following/tool-calling model — it isn't suited to *reasoning about which tool to call*. Using a proper hosted chat model for orchestration, and keeping local specialized models purely as tool backends, is architecturally cleaner and avoids forcing a summarization-only model into a role it isn't built for.
+- **Rejected alternative:** using the `HuggingFacePipeline`-wrapped DistilBART as the agent's own LLM — attempted, then explicitly abandoned once `ChatGroq` was adopted. Full story in [Challenge 8.14](#engineering-challenges).
+</details>
+
+<details>
+<summary><strong>Bonus — Bi-encoder over cross-encoder for retrieval</strong></summary>
+
+<br/>
+
+Not called out as a separate numbered decision in the project notes, but implicit in every choice above and worth making explicit: `all-MiniLM-L6-v2` is used as a **bi-encoder** — documents and queries are embedded *independently*, so the entire corpus can be embedded once, offline, and searched against a freshly embedded query at request time. A **cross-encoder** (which jointly encodes a query-document *pair* to produce a single relevance score) tends to be more accurate, but it cannot be used for initial retrieval at all — it would require re-running the model against every one of 50,000 documents for every single query, with nothing to cache. Bi-encoder retrieval is what makes FAISS indexing possible in the first place; a cross-encoder's natural role is as a *second-stage re-ranker* over an already-shortlisted candidate set — which is exactly why it appears as a proposed direction in [Future Improvements](#future-improvements) rather than as something used for primary retrieval.
+</details>
+
+---
+
+## Data Pipeline
+
+The offline path that turns a raw Hugging Face dataset into a search-ready corpus. Thirteen steps, in order:
+
+1. **Load the dataset** — `datasets.load_dataset(...)` pulls `CShorten/ML-ArXiv-Papers`, returning an Arrow-backed, memory-mapped `DatasetDict` with only `title` and `abstract` fields (already pre-filtered upstream to the `cs.LG` ArXiv category).
+2. **Convert to pandas** — `dataset["train"].to_pandas()` materializes the split into an in-memory DataFrame. *(This trades away Arrow's memory-mapping benefit — judged a non-issue at current scale; see [Challenge 8.13](#engineering-challenges) for exactly where that stops being true.)*
+3. **Column pruning** — sliced down to `df[['title', 'abstract']]`, dropping leftover `"Unnamed"` index columns (artifacts of the source CSV export) across ~117,000–118,000 raw rows, both for semantic irrelevance and memory efficiency.
+4. **Reproducible sampling** — `df.sample(n=50000, random_state=42)`, replacing an earlier order-biased `df.head(50000)` (see [Decision 7.10](#engineering-decisions)).
+5. **Missing-value check** — `df.isnull().sum()` confirms no missing values in `title` or `abstract` for the sampled data. Two `dropna` strategies were explicitly reasoned through even though neither was needed here: dropping only if **both** fields are missing (`how="all"`) vs. dropping if **either** is missing (`how="any"`) — favoring the more lenient `how="all"` in principle, since a missing title with a present abstract still carries information.
+6. **Duplicate removal** — `df.drop_duplicates(subset=["abstract"])` removes rows with duplicate abstract text.
+7. **Combined text field** — `df["paper_text"] = df["title"] + " " + df["abstract"]`, the actual unit that gets embedded (rationale: [Decision 7.9](#engineering-decisions)). A `fillna("")`-based variant was considered for a scenario with partially-missing rows, but the simpler direct concatenation was used since the null-check confirmed no missing values were present.
+8. **Whitespace cleanup** — `df["paper_text"].str.replace(r"\s+", " ", regex=True).str.strip()` collapses all runs of whitespace — including embedded newlines, common in text extracted from PDF-formatted papers where line breaks depend on column width — into single spaces, then trims the ends. An earlier, narrower version only targeted literal `\n` characters with `regex=False` for performance on 117,000+ rows, before being generalized.
+9. **Short-paper filtering** — `df = df[df["paper_text"].str.len() > 30]`, applied *after* cleanup so it operates on true cleaned length, dropping rows too short to carry meaningful semantic content.
+10. **Index reset** — `df = df.reset_index(drop=True)`, re-numbering the DataFrame index to a clean, gap-free `0..N-1` range after all row-dropping — critical so the DataFrame's row order stays perfectly aligned with the embeddings array generated next (root cause and full story: [Challenge 8.11](#engineering-challenges)).
+11. **Embedding generation** — `model.encode(df["paper_text"].tolist(), batch_size=32, show_progress_bar=True)` converts the cleaned texts into a `(N, 384)` `float32` matrix. `batch_size=32` exists specifically to bound memory usage — the full corpus can't go through the network in one shot without risking a RAM/VRAM overload.
+12. **Caching the embeddings** — `np.save(...)` to `data/arxiv_embeddings.npy`, guarded by `os.path.exists` so this multi-minute computation only ever runs once.
+13. **Saving the cleaned DataFrame** — `df.to_csv("data/cleaned_arxiv_papers.csv", index=False)`, so later notebooks can reload it with row order guaranteed to match the cached embeddings, with no recomputation.
+
+---
+
+## Search Pipeline
+
+```mermaid
+sequenceDiagram
+    participant U as Caller
+    participant SE as ArxivSearchEngine
+    participant M as MiniLM Model
+    participant F as FAISS Index
+    participant DF as Papers DataFrame
+
+    U->>SE: search(query, k)
+    SE->>M: model.encode([query])
+    M-->>SE: embedding, shape (1, 384)
+    SE->>SE: faiss.normalize_L2(embedding)
+    SE->>F: index.search(embedding, k)
+    F-->>SE: D (scores), I (positional indices)
+    loop for each (score, idx) in zip(D[0], I[0])
+        SE->>DF: df.iloc[idx]
+        DF-->>SE: title, abstract
+    end
+    SE-->>U: list of {score, title, abstract}
+```
+
+1. **Startup / loading** — the cleaned CSV, the cached embeddings `.npy`, and the `all-MiniLM-L6-v2` model are all loaded once at session start. Reloading cached embeddings takes about a second versus the tens of minutes it would take to regenerate them.
+2. **Document embeddings** — already computed during the [data pipeline](#data-pipeline): one `(N, 384)` `float32` row per paper.
+3. **L2 normalization** — `faiss_embeddings = embeddings.copy()` (a copy, made specifically because `faiss.normalize_L2` mutates its input **in place**, and the original un-normalized embeddings should be preserved) followed by `faiss.normalize_L2(faiss_embeddings)`.
+4. **FAISS index construction** — `faiss.IndexFlatIP(384)` creates an empty flat inner-product index sized for 384-dim vectors; `index.add(faiss_embeddings)` populates it. Persistence to/from disk is guarded by the same `os.path.exists` pattern as the embeddings cache.
+5. **Query encoding** — `model.encode([query])`, wrapped as a one-element list so the output stays a 2D `(1, 384)` array, using the identical model used for documents.
+6. **Query normalization** — `faiss.normalize_L2(query_embedding)`, the same unit-length treatment applied to every stored document vector.
+7. **Vector search** — `D, I = index.search(query_embedding, k)`; FAISS compares the query against every stored vector via inner product (= cosine similarity here) and returns the top-`k`.
+8. **Similarity scores (`D`)** — a `(1, k)` array in the theoretical range `[-1.0, 1.0]` (`1.0` = identical direction, `0.0` = orthogonal, `-1.0` = opposite) — though in practice, real text embeddings almost never produce negative scores; most real results fall between `0.0` and `1.0`. Pre-sorted descending by FAISS.
+9. **Top-K retrieval (`I`)** — a `(1, k)` array of the **positional** row indices of the best matches.
+10. **Metadata lookup** — `df.iloc[idx]` for each returned index — correct only because the DataFrame index was reset to `0..N-1` during the data pipeline.
+11. **Ranking** — no additional re-ranking step beyond FAISS's own similarity-score ordering; results are consumed downstream exactly as FAISS returns them.
+
+---
+
+## Keyword Extraction Pipeline
+
+1. **Model setup** — `kw_model = KeyBERT(model=model)`, explicitly reusing the *same* `all-MiniLM-L6-v2` model already used for document/query embedding, so keyphrase-candidate embeddings live in the same vector space as everything else. `vectorizer = KeyphraseCountVectorizer()` is instantiated once and reused across calls.
+2. **Candidate generation** — `KeyphraseCountVectorizer` generates candidate phrases using **part-of-speech (POS) tag patterns** via spaCy's `en_core_web_sm`, rather than a fixed n-gram sliding window — producing grammatically complete noun-phrase-style candidates by construction. *(Superseded earlier approach, kept for comparison: manual `keyphrase_ngram_range=(1,3)` + a stop-word list — noisier, see [Decision 7.7](#engineering-decisions) and [Challenge 8.6](#engineering-challenges).)*
+3. **Relevance scoring** — KeyBERT embeds each candidate phrase with the shared MiniLM model and scores it by cosine similarity to the source document's own embedding.
+4. **MMR diversification** — `use_mmr=True, diversity=0.5` re-ranks the candidate pool to balance *relevance* against *diversity*, preventing the top-10 list from being dominated by several near-duplicate variants of the same concept.
+5. **Top-N selection** — `top_n=10` keyphrases per paper, a fixed value. A dynamic `top_n = min(10, len(text.split()))` was explicitly considered and rejected: for realistic abstract lengths (typically well over 100 words), the dynamic calculation is always a no-op — added complexity with no practical benefit, since KeyBERT already handles the "fewer candidates than requested" case gracefully on its own.
+6. **Batch handling** — `kw_model.extract_keywords(list_of_abstracts, vectorizer=vectorizer, top_n=10, use_mmr=True, diversity=0.5)` is called **once per search query**, across all `k` retrieved abstracts together — mirroring the same batching principle applied to summarization.
+7. **Single-document shape normalization** — because KeyBERT's return shape depends on whether the input batch has more than one document, a guard (`if len(allabstracts) == 1: keywords = [keywords]`) re-wraps a single-document result to match the nested shape downstream code expects. *(This is the project's flagship bug — full story in [Challenge 8.1](#engineering-challenges).)*
+8. **Output formatting** — in the direct pipeline, each result dict stores its keyphrase list under a `"Keywords"` key; in the LangChain tool version, the same list is instead rendered into a formatted text block (`- {phrase} ({score:.4f})` per line), since the tool's return value must be a plain string the agent LLM can read.
+
+---
+
+## Summarization Pipeline
+
+1. **Model setup** — `pipeline("summarization", model="sshleifer/distilbart-cnn-12-6", device=setdevice)`, where `setdevice` is `0` if a CUDA GPU is available, else `-1` — derived from the same shared `torch.cuda.is_available()` check used elsewhere.
+2. **Input gathering** — for each of the `k` retrieved papers, the abstract text is collected into a single list (`allabstracts`), and each abstract's word count (`len(abstract_text.split())`, used as an approximation of token count) is computed.
+3. **Dynamic length-bound calculation** — since one batched pipeline call accepts only a single scalar `max_length`/`min_length` for the *entire* batch, both bounds are derived from the batch's abstracts collectively: `dynamic_max = 80` (a fixed ceiling in the final implementation) and `dynamic_min` computed as a running minimum across all abstracts in the batch, ensuring the requested minimum length never exceeds what the *shortest* abstract can reasonably support. *(An earlier, more elaborate ratio-based variant computed both bounds as a percentage of the shortest abstract's word count — see [Challenge 8.5](#engineering-challenges) for the reasoning trail.)*
+4. **Batched generation** — `summarizer(allabstracts, max_length=dynamic_max, min_length=dynamic_min, batch_size=k, do_sample=False)` — one call, all `k` abstracts together. `do_sample=False` selects deterministic decoding, so the same input reliably produces the same summary.
+5. **Output consumption** — the batched call returns a **flat list of dicts** (`[{"summary_text": "..."}, ...]`, one per input item, already unwrapped) — not a list of single-item lists like the old single-string call form. Consumed via `summary["summary_text"]` while iterating in parallel with scores/indices via `zip(...)`. *(This shape change is exactly what broke downstream code the first time — [Challenge 8.4](#engineering-challenges).)*
+6. **Integration into results** — each generated summary is attached either as a `"summary"` field in a dict (direct pipeline) or interpolated into a formatted text block (agent pipeline).
+
+---
+
+## Performance Optimizations
+
+Every optimization below came with an explicit, acknowledged tradeoff — none were free wins.
+
+| Optimization | Problem it solved | Impact | Tradeoff |
+|---|---|---|---|
+| **Batch summarization** | Looping DistilBART once per paper paid tokenization/padding/transfer/kernel-launch overhead `k` separate times; triggered HF's "sequential pipeline calls on GPU" warning | One GPU round-trip instead of `k`; real batch-level parallelism; warning eliminated | `max_length`/`min_length` become shared scalars across the batch — bounds must be derived conservatively from the *shortest* abstract |
+| **Notebook modularization** (`src/search.py`) | Iterating on retrieval inline risked tangled, hard-to-reuse code; the agent layer needed identical retrieval logic | Single source of truth for retrieval — the agent's tools call `searcher.search(query, k)` instead of duplicating embed/normalize/search code | An extra layer of indirection (import + instantiation) vs. a fully self-contained notebook — worthwhile once retrieval logic stabilized |
+| **Precomputed embeddings + FAISS index caching** | Encoding ~50,000 documents is a multi-tens-of-minutes operation (~26 min for a 15,000-row batch at `batch_size=32`) | Subsequent runs load the same embeddings/index in ~1 second instead of tens of minutes | Cached artifacts are large binary files (112MB CSV, 73MB FAISS index) that don't belong well in Git — this directly caused [Challenge 8.2](#engineering-challenges); the cache also silently invalidates if the sample seed/size or embedding model changes |
+| **FAISS `IndexFlatIP` + L2 normalization** | Computing cosine similarity via scikit-learn (fine for a handful of EDA vectors) doesn't scale to tens of thousands of papers per query | FAISS search becomes a tiny fraction (a few ms) of total per-query latency | Exact brute-force search — would need to become an approximate/clustered index (`IVFFlat`) if the corpus grew to millions of vectors, trading some recall for speed |
+| **`all-MiniLM-L6-v2` as the embedding model** | Encoding tens of thousands of documents (and every query, live) needs to run fast on consumer hardware | Fast batch encoding (`batch_size=32`) and near-instant query encoding | Lower embedding-quality ceiling than a larger model — an acceptable tradeoff at this project's scale |
+| **DistilBART over full BART-large-CNN** | A ~1.6GB summarization model is slower to download, load, and run than necessary for short abstracts | Faster load and inference | Some ceiling on summary quality/nuance vs. the full-size model |
+| **`KeyphraseCountVectorizer` + MMR** | Naive n-gram candidates: 223 candidates at only ~10.8% clean (`stop_words=None`), 174 at ~13.8% clean (`stop_words='english'`) | Only 25 candidates generated, **100% grammatically clean by construction** — plus better topical diversity in the final top-10 from MMR | Added spaCy + `en_core_web_sm` dependency and a small per-document POS-tagging cost — judged well worth the quality gain |
+| **Column pruning + GPU device selection** | Unused dataset columns carried through the whole pipeline for no reason; hardcoded `device=0` would crash on any non-GPU machine | Lower RAM footprint and faster pandas ops; the notebook runs on GPU when available and falls back to CPU instead of crashing | None noted for either — both are strict robustness/efficiency wins at this project's scale |
+
+---
+
+## Engineering Challenges
+
+> This is the project's most heavily documented section. Every entry below follows the same shape — **Problem → Symptoms → Investigation → Root Cause → Solution → Engineering Lesson** — because that's the shape a technical interviewer actually wants to hear, and because "I fixed a bug" is not an engineering story. Fourteen challenges total; the flagship one is expanded below, the rest are collapsed for scannability — click to expand.
+
+### 8.1 — The flagship bug: KeyBERT's silent dimensionality shift at `k=1`, compounded by `zip()` truncation and a stale Jupyter kernel
+
+**Problem.** A function retrieving the top-`k` papers and extracting 10 keyphrases per paper worked perfectly for `k ≥ 2`, but silently returned only **1** keyword instead of 10 when `k = 1`. No exception was thrown — the failure was silent, which is what made it dangerous.
+
+**Symptoms.** For `k ≥ 2`, each result dict's `"Keywords"` field held a full list of ~10 `(phrase, score)` tuples. For `k = 1`, the same field held a **single bare tuple** — e.g. `('accelerated gradient method', 0.5973)` — instead of a list of ten.
+
+**Investigation.** Systematic type introspection (`print(type(keywords))`, inspecting loop outputs) instead of guessing, which revealed that `kw_model.extract_keywords()`'s return **shape itself changes** depending on how many documents were passed in:
+- Batch of `≥ 2` documents → a **list of lists of tuples**: `[[(phrase, score), ...], [(phrase, score), ...]]` (one inner list per document).
+- Batch of exactly **1** document → KeyBERT strips the outer list and returns a **flat list of tuples directly**: `[(phrase, score), ...]`.
+
+This is a polymorphic, batch-size-dependent return type from a third-party library — its output structure is not invariant across input sizes.
+
+**Root Cause.** The result-assembly loop used `zip(D[0], I[0], allsummaries, keywords)` to walk four parallel sequences together. Python's `zip()` terminates as soon as **any** input iterable is exhausted. At `k=1`: `D[0]`, `I[0]`, and `allsummaries` all have length 1, but the (flattened) `keywords` list has length 10 — one entry *per keyword tuple*, not per document. On the first (and only) iteration, `zip()` pulled `keywords[0]` — the single best keyword tuple, not the full ten-keyword list — because there was no outer list level to index into. `zip()` then immediately stopped, silently discarding the other nine tuples with no error or warning at all.
+
+**Solution.** An edge-case normalization guard, keyed on the number of documents actually sent in:
 
 ```python
 if len(allabstracts) == 1:
     keywords = [keywords]
 ```
 
-A more robust variant was also identified — checking the *actual returned structure* rather than trusting the input batch size, since a future code path could reduce the effective batch to one document for reasons unrelated to the requested `k`:
+This re-wraps the flat list into a one-element list-of-lists, restoring the expected nested shape so `zip()` correctly binds the *entire* ten-keyword list to that single paper. A more robust, shape-driven alternative was also identified — checking the actual returned structure instead of trusting the input count, since a future code path might reduce the effective batch to 1 for reasons unrelated to the requested `k`:
 
 ```python
 if keywords and isinstance(keywords[0], tuple):
     keywords = [keywords]
 ```
 
-Checking `isinstance(keywords[0], tuple)` is more robust than checking `k == 1`, because the *trigger* for KeyBERT's shape change is the actual number of documents it received — not the caller's original intent — and those two things aren't always guaranteed to stay in sync.
-</details>
+**Second, compounding bug — stale kernel state.** After editing the function to add the fix, the notebook's output *still* showed the old, broken one-keyword behavior. This wasn't a code bug — it was a Jupyter/IPython execution-model trap. Jupyter notebooks bind function definitions as live Python objects inside the kernel's runtime memory. **Editing a cell's source does not retroactively update a function already defined and bound in kernel memory** until that defining cell is *re-executed*. The stale, pre-fix function object was still what was actually being called. Re-running the definition cell rebound the name to the corrected implementation, and the bug disappeared.
 
-<details>
-<summary><b>Challenge 2 — <code>zip()</code>'s Silent Truncation</b></summary>
-<br/>
-
-**What happened:** the final result-assembly step walked four parallel sequences together with `zip(D[0], I[0], summaries, keywords)`. Python's `zip()` stops as soon as **any** input iterable is exhausted — it does not raise an error on a length mismatch, it just stops silently.
-
-**Why this mattered here:** at `k=1`, `D[0]`, `I[0]`, and `summaries` all have length 1 — but the (flattened, per Challenge 1) `keywords` list has length 10, one entry per keyword tuple rather than per document. `zip()`'s first iteration grabbed `keywords[0]` — a single keyword tuple, not the intended ten-item list — and then terminated immediately, silently discarding the other nine keywords with **no exception thrown at all**.
-
-**The lesson:** understanding core language mechanics — specifically that `zip()` truncates rather than errors — was what actually explained *why* the symptom from Challenge 1 manifested exactly the way it did. A shape bug and an iteration-semantics quirk compounded into one silent failure; neither alone fully explains what happened.
-</details>
-
-<details>
-<summary><b>Challenge 3 — The Stale Jupyter Kernel</b></summary>
-<br/>
-
-**What happened:** after writing the fix for Challenges 1 & 2, the notebook's output *still* showed the old, broken behavior.
-
-**Root cause:** this wasn't a code bug at all — it was a Jupyter/IPython execution-model trap. Jupyter binds function definitions as live Python objects inside the kernel's running memory. **Editing a cell's source code does not retroactively update a function object that's already been defined and is still bound in kernel memory** — the stale, pre-fix function was still what downstream cells were actually calling, until the defining cell was explicitly re-executed.
-
-**The lesson:** in interactive notebook environments, a source-code edit and a kernel-state update are two different things. Re-running the function-definition cell to rebind the corrected implementation is what actually resolved the issue — a reminder that notebooks retain state independently of what's visible in the editor.
-</details>
-
-<details>
-<summary><b>Challenge 4 — Memory Optimization via Notebook Separation</b></summary>
-<br/>
-
-**What happened:** early development kept embedding generation, FAISS search, summarization, and keyword extraction logic co-located, risking every model (MiniLM, DistilBART, KeyBERT) being loaded into memory simultaneously regardless of which one a given cell actually needed.
-
-**The fix:** the project was split so that each notebook stays focused on one responsibility — data acquisition & embedding generation, then search & enrichment, then agent orchestration — with expensive artifacts (embeddings, FAISS index) cached to disk and reloaded rather than recomputed. This reduced peak memory usage, avoided unnecessary model reloads, prevented kernel crashes from cumulative memory pressure, and — as a direct side effect — made debugging far easier, since a bug in one stage could be reproduced in a notebook containing only that stage's models and data.
-</details>
-
-<details>
-<summary><b>Challenge 5 — Keyword Quality (from noisy n-grams to clean keyphrases)</b></summary>
-<br/>
-
-**What happened:** early keyword extraction used `KeyBERT`'s default n-gram candidate generation. Even after adding stopword removal, results stayed weak — fragmented phrases, stray prepositions ("how deep learning," "on deep learning") leaking into the final keyword list.
-
-**Investigation:** rather than continuing to tweak `stop_words` blindly, the underlying `CountVectorizer` behavior was tested directly and standalone. This revealed that stopword filtering happens *before* n-grams are built — meaning a genuine phrase like "deep learning" was never at risk from `stop_words` settings in the first place, and the original fix attempt had been solving the wrong problem.
-
-**The real fix:** replacing n-gram-based candidate generation entirely with `KeyphraseCountVectorizer`, which generates candidates from part-of-speech patterns instead — grammatically valid phrases by construction. Measured before/after: raw n-grams produced 223 candidates at ~10.8% clean; `KeyphraseCountVectorizer` produced 25 candidates at 100% clean.
-</details>
-
-<details>
-<summary><b>Challenge 6 — Summarization Optimization (batch vs. per-paper)</b></summary>
-<br/>
-
-**What happened:** the original implementation called the DistilBART summarizer once per retrieved paper, inside a loop — `k` separate forward passes for a `k`-paper result set. This triggered a Hugging Face runtime warning about using pipelines sequentially on GPU.
-
-**Investigation:** rather than just suppressing the warning, the `transformers` pipeline source itself was inspected, tracing the warning to a lifetime `call_count` counter — but the *real* inefficiency was independent of the warning: each single-item call pays its own tokenization, padding, host↔GPU transfer, and kernel-launch overhead, so `k` calls of batch size 1 do strictly more total work than one call of batch size `k`.
-
-**The fix:** collect every abstract into a list, make exactly one summarizer call across the whole batch (`batch_size=k`). This directly cut per-query latency and eliminated the warning — but also changed the summarizer's output *shape* (a flat list of dicts instead of a list of single-item lists), which broke downstream `[0]`-indexing that had been written for the old single-item call pattern, requiring a second, related fix.
-</details>
-
-<details>
-<summary><b>Bonus Challenge — GitHub Rejected Large Files Already Baked into Git History</b></summary>
-<br/>
-
-**What happened:** as cached artifacts grew (`cleaned_arxiv_papers.csv` reached 112MB, `paper_faiss.index` reached 73MB — both over GitHub's ~100MB push limit), pushes started failing with `GH001: Large files detected`. Deleting the files locally and adding them to `.gitignore` **did not** fix it.
-
-**Root cause:** Git doesn't upload your current working directory — it uploads your entire commit history. The large files still existed inside an older commit; GitHub validates the *entire* pushed history, not just the latest snapshot, and `.gitignore` only prevents *new* untracked files from being staged — it has no effect on objects already committed.
-
-**The fix depends entirely on who else depends on the history:**
-- Solo dev, never pushed → `git reset --mixed origin/main` (safe, no rewrite needed).
-- Solo dev, already pushed → `git filter-repo --path <file> --invert-paths` + `git push --force` (safe — no one else has cloned it).
-- Shared/team repo → history rewriting is high-risk; requires coordinating a freeze, one rewrite, and everyone else recovering via `git fetch && git reset --hard origin/main` — or, better, avoiding the rewrite entirely.
-- Files that need to stay long-term → **Git LFS**, tracked from the start.
-
-**The lesson:** Git's storage model is snapshots per commit, not diffs against current state — a "fix" has to match the collaboration context (solo/unpushed vs. solo/pushed vs. shared vs. forked), because there is no single universal remedy.
-</details>
-
+**Engineering Lesson.**
+1. Never assume a third-party library's output structure is invariant across different batch/input sizes — verify with `type()`/`print()` rather than assuming.
+2. Understand core language mechanics deeply: `zip()` silently truncates to the shortest iterable rather than raising an error on length mismatch.
+3. In interactive notebook environments, source-code edits require explicit cell re-execution to take effect in the running kernel.
 
 ---
 
-## 📊 Performance Metrics
+<details>
+<summary><strong>8.2 — GitHub rejected pushes: large files (&gt;100MB) already baked into Git history</strong></summary>
+
+<br/>
+
+**Problem.** As the dataset grew, `cleaned_arxiv_papers.csv` reached **112 MB** and `paper_faiss.index` reached **73 MB** — both over GitHub's ~100MB hard limit for a single push. GitHub rejected pushes with `GH001: Large files detected`.
+
+**Symptoms.** Deleting the large files locally and adding them to `.gitignore` did **not** fix it — pushes continued to be rejected.
+
+**Investigation / Root Cause.** A common misconception: "delete file + `.gitignore`" ≠ "problem solved." **Git uploads your entire commit history, not your current working directory.** The large files still existed inside an *older* commit (Commit A added the 112MB CSV; Commit B later deleted it) — GitHub inspects the full pushed history, not just the latest snapshot, so Commit A's large blob still triggers rejection even though the file is gone from the current tree. `.gitignore` only prevents **new**, untracked changes from being staged; it has no effect on objects already committed.
+
+**Solution — scenario-dependent, reasoned through explicitly:**
+- **Solo dev, never pushed:** `git fetch origin && git reset --mixed origin/main` — moves the local branch pointer back to match remote, "un-committing" the bad commits while leaving files untouched on disk. Since `.gitignore` now excludes them, a fresh `git add . && git commit && git push` never re-stages them. No history rewrite needed.
+- **Solo dev, already pushed:** `git filter-repo --path <file> --invert-paths` then `git push --force` — physically rewrites every commit, scrubbing the file from history. Rewriting changes every subsequent commit's SHA-1, so force-push is required — safe only because no one else has cloned/forked the repo.
+- **Multiple contributors on a shared branch:** history rewriting is high-risk — it breaks every other contributor's local clone. Requires freezing all pushes, one person running `filter-repo` + force-push, and everyone else recovering via `git fetch && git reset --hard origin/main` (not a normal `git pull`) — or, better, avoiding a rewrite via Git LFS instead.
+- **Forked / open-source repos:** rewriting history is discouraged (invalidates forks/PRs); Git LFS or scrubbing large files going forward is preferred, with any rewrite announced/coordinated first.
+- **Large files genuinely needed long-term** (model checkpoints, datasets): **Git LFS** (`git lfs track "*.csv"`) — Git stores lightweight pointer files in normal history while the binary content lives on a separate LFS server.
+- **Accidentally committed secrets:** deleting isn't enough (same history-persistence issue) — requires `git filter-repo` or BFG Repo-Cleaner, **and** immediate credential rotation, since the secret was exposed regardless of later scrubbing.
+
+**Root Cause, precisely.** Git's storage model is **snapshots per commit**, not diffs relative to "current state." Every commit that ever referenced a large blob keeps that blob reachable until history itself is rewritten.
+
+**Engineering Lesson.** Deleting a file doesn't delete it from Git history; `.gitignore` only affects untracked files going forward; GitHub validates the entire pushed commit history; and the correct remediation depends entirely on the repo's collaboration state — there's no single universal fix. Prevention: a strict `.gitignore` (`data/`, `venv/`, `.env`) **before** the first commit, and Git LFS from the start for anything expected to grow large.
+</details>
+
+<details>
+<summary><strong>8.3 — Sequential single-item summarizer calls ("using pipelines sequentially on GPU" warning)</strong></summary>
+
+<br/>
+
+**Problem.** The original code called `summarizer(single_abstract, ...)` once per retrieved paper inside a loop — `k` separate forward passes through DistilBART, each processing a "batch" of exactly 1.
+
+**Symptoms.** Hugging Face's `transformers` library emitted a runtime warning about using pipelines sequentially on GPU, suggesting a dataset-style batched input instead.
+
+**Investigation.** Rather than just silencing the warning, the actual pipeline source was inspected. The base `Pipeline.__call__` keeps a running `call_count` across the pipeline object's entire lifetime and fires the warning once that counter exceeds 10 **and** the device is CUDA:
+
+```python
+self.call_count += 1
+if self.call_count > 10 and self.device.type == "cuda":
+    logger.warning_once("You seem to be using the pipelines sequentially on GPU...")
+```
+
+**Root Cause.** The warning is a lifetime counter, not tied to any single call — but the *real* performance cost is independent of whether the warning fires at all: each single-item call independently pays its own tokenization, padding, host→GPU transfer, and CUDA kernel-launch overhead, so `k` calls of batch-size-1 do strictly more total work than 1 call of batch-size-`k`.
+
+**Solution.** Collect every abstract into a list first, then make exactly one summarizer call across the whole batch:
+
+```python
+summaries = summarizer(abstracts, max_length=..., min_length=..., do_sample=False, batch_size=k, truncation=True)
+```
+
+**Engineering Lesson.** Don't just suppress a library warning — trace it to its source to understand the *actual* underlying inefficiency it's pointing at, which is often more fundamental than the warning message itself suggests.
+</details>
+
+<details>
+<summary><strong>8.4 — Output-shape change when moving from single-item to batched summarizer calls</strong></summary>
+
+<br/>
+
+**Problem.** After switching to batched summarizer calls (Challenge 8.3's fix), downstream code unpacking results with `zip(..., allsummaries)` started throwing a `KeyError`.
+
+**Symptoms.** Code written for the old single-item pattern (`summarizer("text")` → `[{'summary_text': '...'}]`, requiring `summary[0]["summary_text"]`) broke once the summarizer started receiving a list.
+
+**Root Cause.** The pipeline's return shape changes based on input shape: a single string returns a **list containing one dict**; a list of strings returns a **flat list of dicts directly** — one dict per input item, already unwrapped, not a list of single-item lists. Inside the `zip(...)` loop, each `summary` variable is *already* an individual dict once `allsummaries` is the batched output, so indexing it with `[0]` first (as the old code did) throws `KeyError` because a dict has no integer index `0`.
+
+**Solution.** Remove the erroneous `[0]` indexing — access `summary["summary_text"]` directly when iterating over a batched result list.
+
+**Engineering Lesson.** Switching a library call from single-item to batched mode can silently change its output *shape*, not just its performance — every downstream consumer needs re-auditing, not just the call site.
+</details>
+
+<details>
+<summary><strong>8.5 — Dynamic <code>max_length</code>/<code>min_length</code> calibration for the summarizer</strong></summary>
+
+<br/>
+
+**Problem.** Fixed values (`max_length=120, min_length=40`) triggered Hugging Face's warning that `max_length` exceeded the actual input length — nonsensical for summarization, where output should always be shorter than input.
+
+**Symptoms.** The warning appeared whenever a retrieved abstract had fewer tokens than the hardcoded `max_length`.
+
+**Investigation.** The true model input unit is **tokens**, but the project used `len(abstract_text.split())` (word count) as a cheap approximation — deliberately reasoning through the distinction: `len(text)` counts raw characters (not a meaningful content proxy); `len(text.split())` counts words, a much better (if still imperfect) proxy, since transformer tokenizers can split one word into multiple sub-word tokens (e.g., "diagnosis" → "diagnos" + "is").
+
+**Root Cause.** Any fixed `max_length`/`min_length` pair is guaranteed to eventually mismatch some input's real length, since abstract lengths vary.
+
+**Solution.** Compute `dynamic_max`/`dynamic_min` per query batch from the actual word counts of the retrieved abstracts, sized off the **shortest** abstract in the batch (a single batched call only accepts one scalar bound for the whole batch). The more precise alternative — using the model's own tokenizer (`AutoTokenizer`, `len(tokenizer.encode(text))`) for exact token counts — was identified but explicitly **not adopted**, judged as unnecessary precision for a portfolio-scale project.
+
+**Engineering Lesson.** Understand the difference between characters, words, and tokens as three distinct "length" units in NLP, know which one a given API parameter actually operates in, and choose an approximation good enough for the problem's real stakes rather than over-engineering precision with no practical benefit.
+</details>
+
+<details>
+<summary><strong>8.6 — <code>stop_words=None</code> letting prepositions leak into keyphrases</strong></summary>
+
+<br/>
+
+**Problem.** An early KeyBERT configuration set `stop_words=None` — apparently to fix a *different*, earlier problem (multi-word phrases like "deep learning" being split into single words) — but this let low-value prepositional phrases like "how deep learning" and "on deep learning" appear as extracted keyphrases.
+
+**Investigation.** Rather than guessing, the underlying `CountVectorizer` behavior (which KeyBERT uses internally for candidate generation) was tested directly and standalone, comparing `stop_words=None` vs. `stop_words="english"` on a sample sentence.
+
+**Root Cause.** `CountVectorizer` strips stop-word **tokens** from the stream *before* n-grams are constructed — meaning "deep learning" survives stopword filtering regardless of the `stop_words` setting, because neither "deep" nor "learning" is a stop word. Setting `stop_words=None` was never actually necessary to preserve "deep learning" (that effect came entirely from `keyphrase_ngram_range=(1,3)`); its only real effect was letting prepositions back into the candidate pool.
+
+**Solution.** `stop_words="english"` (with `keyphrase_ngram_range=(1,3)` still in place) removes the stray prepositional candidates while leaving genuine multi-word phrases intact. An extended custom stopword list was also tested for additional domain-specific filtering.
+
+**Engineering Lesson.** A fix aimed at one symptom can be based on a misdiagnosis of *why* that symptom occurred — verifying the actual mechanism via a standalone, isolated test revealed the real fix (n-gram range) was unrelated to the parameter that was actually changed, and that the changed parameter had its own unintended side effect.
+</details>
+
+<details>
+<summary><strong>8.7 — KeyBERT import/instantiation error (<code>TypeError: 'module' object is not callable</code>)</strong></summary>
+
+<br/>
+
+**Problem.** `import keybert` followed by `kw_model = keybert(...)` raised a `TypeError`.
+
+**Root Cause.** `import keybert` imports the entire **module**, not the `KeyBERT` **class** defined inside it. Python's capitalization is significant — `keybert` (module) and `KeyBERT` (class) are different names. Calling the module itself as if it were the class/constructor fails.
+
+**Solution.** `from keybert import KeyBERT`, then `kw_model = KeyBERT(model=model)`.
+
+**Engineering Lesson.** A basic but genuinely common Python trap — always import the specific class/callable you intend to use, not just the top-level package, and pay attention to capitalization conventions.
+</details>
+
+<details>
+<summary><strong>8.8 — <code>.head(50000)</code>: a deterministic, order-biased sample disguised as a random one</strong></summary>
+
+<br/>
+
+**Problem.** The original sampling approach, `df.head(50000)`, always takes the *first* 50,000 rows in whatever order the source dataset happens to be stored in.
+
+**Root Cause.** ArXiv paper IDs are date-based, so it's plausible that taking the literal first N rows skews the sample toward earlier submission dates rather than representing the corpus evenly. *(This ordering bias was not exhaustively confirmed for this specific dataset — the fix was judged cheap enough to apply regardless of certainty.)*
+
+**Solution.** `df.sample(n=50000, random_state=42)` — genuinely random sampling with a fixed seed for full reproducibility.
+
+**Engineering Lesson.** A deterministic slice of ordered data is not automatically a representative sample; random sampling with a fixed seed gets both statistical soundness and full reproducibility — critical whenever downstream artifacts (like cached embeddings) are keyed to a sample's exact contents.
+</details>
+
+<details>
+<summary><strong>8.9 — Inconsistent device placement across libraries (<code>device=0</code> crash risk + differing conventions)</strong></summary>
+
+<br/>
+
+**Problem.** The Hugging Face `pipeline(..., device=0)` call hardcoded GPU 0, which would hard-crash with a `RuntimeError` on any machine without a CUDA GPU at index 0. Meanwhile `SentenceTransformer(...)` had no explicit `device` argument, silently auto-detecting and falling back to CPU — an inconsistency where one component fails loudly on non-GPU hardware and the other doesn't.
+
+**Root Cause, compounded by an API convention mismatch.** `sentence-transformers` accepts a device as a **string** (`"cuda"`/`"cpu"`), while `transformers.pipeline` accepts a device as an **integer** (`-1` for CPU, `0`/`1`/... for a GPU index) — two different conventions for the same concept.
+
+**Solution.** Derive both from a single shared check:
+
+```python
+cuda_available = torch.cuda.is_available()
+hf_device = 0 if cuda_available else -1
+st_device = "cuda" if cuda_available else "cpu"
+```
+
+`torch.cuda.get_device_name(0)` was also used to explicitly verify which physical GPU (an RTX 3050 in development) inference was actually running on.
+
+**Engineering Lesson.** Different libraries in the same stack can use incompatible conventions for the same underlying concept; the fix is to centralize the decision in one place rather than configuring each library independently and hoping the conventions line up — and to always provide a graceful CPU fallback rather than hardcoding a GPU-only assumption.
+</details>
+
+<details>
+<summary><strong>8.10 — 1D vs. 2D array shape mismatches in <code>cosine_similarity</code> and FAISS <code>index.search</code></strong></summary>
+
+<br/>
+
+**Problem.** Calling `cosine_similarity(sample_embedding[0], sample_embedding[0])` raised a `ValueError` about expecting 2D array input.
+
+**Root Cause.** `sample_embedding` is a `(5, 384)` matrix; slicing a single row with `sample_embedding[0]` returns a flattened `(384,)` 1D array. Both `sklearn`'s `cosine_similarity` and FAISS's `index.search` are designed to compare **batches** of vectors and strictly require 2D input — a "list of vectors," even a list of exactly one.
+
+**Solution.** Wrap the slice in an extra bracket (`[sample_embedding[0]]`) or use `.reshape(1, -1)`. The same shape requirement is exactly why every single query is later encoded as `model.encode([query])` — a one-element **list** — rather than `model.encode(query)`.
+
+**Engineering Lesson.** Many vectorized ML/scientific-computing APIs assume "batch of N" as their fundamental input unit, even when N=1 — always check whether a function expects a 2D "batch" shape versus a bare 1D vector, and prefer feeding single items as one-element lists from the start rather than special-casing them later.
+</details>
+
+<details>
+<summary><strong>8.11 — Pandas index misalignment after row-dropping operations</strong></summary>
+
+<br/>
+
+**Problem.** Operations that remove rows (`dropna()`, `drop_duplicates()`, length-based filtering) leave **gaps** in the DataFrame's index (e.g., `0, 2, 4, ...` instead of a clean `0, 1, 2, ...`), because pandas does not automatically renumber the index after a row is dropped.
+
+**Symptoms / Risk.** The NumPy embeddings array is always positionally dense (`embedding[0]`, `embedding[1]`, ... with no gaps), so if the DataFrame's index still has gaps, row-label `18` and embedding-array position `1` can silently refer to *different* underlying rows — a subtle "off-by-index" bug that would return the wrong paper's title/abstract for a given FAISS hit, without ever raising an exception. Worsened by FAISS returning purely **positional** indices, which must be looked up via `.iloc` (position-based), not `.loc` (label-based) — using `.loc[faiss_index]` after rows have been dropped could raise `KeyError` or silently fetch the wrong row.
+
+**Root Cause.** Conflating a DataFrame's **index labels** (which can have gaps or be non-sequential) with **positional order** (which FAISS and the raw embeddings array always use).
+
+**Solution.** `df = df.reset_index(drop=True)` immediately after any row-removing operation and before generating embeddings, so the index becomes a clean `0..N-1` range guaranteed to match the embeddings array's positions one-to-one. `drop=True` discards the old index rather than inserting it as a new `"index"` column. Downstream lookups then consistently use `.iloc[faiss_row_index]`.
+
+**Engineering Lesson.** `loc` (label-based) vs. `iloc` (position-based) access, and resetting the index after any row-dropping operation, are both instances of the same underlying principle: **never assume index labels and row positions are the same thing** unless explicitly guaranteed.
+</details>
+
+<details>
+<summary><strong>8.12 — Windows symlink cache warning from <code>huggingface_hub</code> (informational, not functional)</strong></summary>
+
+<br/>
+
+**Problem.** Downloading models on Windows triggered a warning that `huggingface_hub`'s cache system normally uses symlinks (to avoid duplicate copies of shared files across models), but Windows blocks symlink creation for standard users by default.
+
+**Root Cause.** This is purely a **storage-efficiency** mechanism, unrelated to correctness or performance of inference. Hugging Face silently falls back to full file copies when it can't create symlinks — the code still works correctly, and (a common misconception, explicitly addressed) the model is **not** re-downloaded or re-copied on every inference call; the download/cache step happens once, and every subsequent call simply reuses the already-loaded in-memory model.
+
+**Solution — two documented options.** (A) enable Windows Developer Mode to allow real symlinks, purely for cleaner disk usage; or (B) suppress the warning via `os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"`, since the underlying fallback behavior is harmless either way.
+
+**Engineering Lesson.** Not every library warning indicates a bug — distinguishing a purely informational/storage-related warning from a functional correctness issue avoids wasted debugging effort.
+</details>
+
+<details>
+<summary><strong>8.13 — <code>.to_pandas()</code> giving up Hugging Face <code>datasets</code>' Arrow memory-mapping</strong></summary>
+
+<br/>
+
+**Problem / Latent Risk.** `load_dataset(...)` returns an Apache Arrow-backed `Dataset` object that memory-maps its data, allowing datasets larger than available RAM to be processed. Calling `.to_pandas()` immediately materializes the **entire** split into an ordinary in-memory DataFrame, discarding that memory-mapping benefit for the rest of the notebook.
+
+**Assessment.** Explicitly judged **not currently a problem** — at ~117,000–118,000 rows of title+abstract text, the full dataset is only a few hundred MB, trivial for any modern machine, and pandas provides far more convenient tooling (`.iloc`, simple CSV export) than staying inside the `datasets` library's own API.
+
+**Where it would matter, and the documented future fix.** If the corpus grew 50–100×, materializing everything into one DataFrame could exhaust RAM before embedding even starts. The fix would be to stay inside `datasets`' own batched `.map()` API — processing and writing results back to the Arrow file in bounded-size chunks (`batch_size=1000`) — mirroring the same "bounded chunk size" principle already used for the embedding step's `batch_size=32`.
+
+**Engineering Lesson.** Knowing the memory characteristics of your libraries lets you make a *conscious*, scale-appropriate tradeoff rather than an accidental one — documenting a "not a problem yet, but here's the fix when it becomes one" plan is valuable even when no immediate action is taken.
+</details>
+
+<details>
+<summary><strong>8.14 — Redundant <code>HuggingFacePipeline</code> LLM wrapper (architectural correction)</strong></summary>
+
+<br/>
+
+**Problem.** An intermediate design considered wrapping the local Hugging Face summarizer as a LangChain-compatible `HuggingFacePipeline` **LLM**, so it could be plugged into LangChain constructs (`PromptTemplate`, chains, agents) like any other LLM.
+
+**Root Cause / Reassessment.** DistilBART is a narrow summarization model, not a general instruction-following or tool-calling model — wrapping it as *the agent's own LLM* would mean asking a summarization-only model to also perform reasoning and tool selection, tasks it isn't suited for.
+
+**Solution.** The wrapper was explicitly **removed** once `ChatGroq` — a proper hosted, tool-calling-capable chat model — was adopted as the actual agent LLM. DistilBART and KeyBERT were re-scoped to their correct role: tool **backends**, called only after the agent LLM has already decided a given tool should run — never the model doing the deciding itself. *(This is the same principle documented as [Decision 7.14](#engineering-decisions).)*
+
+**Engineering Lesson.** Just because a component *can* be adapted to fit an interface doesn't mean it *should* be used in that role — matching a model's actual capabilities to the responsibility it's given is a more important design constraint than interface compatibility alone.
+</details>
+
+---
+
+## Performance Metrics
 
 | Metric | Value |
 |---|---|
-| Dataset size | 50,000 ML research papers (sampled from ~117,000–118,000) |
+| Dataset size | 50,000 research papers (sampled from ~117,000–118,000 raw rows in `CShorten/ML-ArXiv-Papers`) |
 | Embedding model | `all-MiniLM-L6-v2` |
-| Embedding dimension | 384 |
-| Vector precision | `float32` |
-| FAISS index | `IndexFlatIP` (exact, brute-force, L2-normalized) |
-| Retrieval method | Semantic search (cosine similarity via FAISS) |
+| Vector dimension | 384 (`float32`) |
+| FAISS index | `IndexFlatIP` (exact, brute-force inner product) |
 | Summarizer | DistilBART (`sshleifer/distilbart-cnn-12-6`) |
-| Keyword model | KeyBERT + `KeyphraseCountVectorizer` + MMR |
-| **Average end-to-end query latency** | **~0.88 s/query** |
-| Measured benchmark | 5 queries completed in ~4.4 seconds total |
+| Keyword model | KeyBERT + `KeyphraseCountVectorizer` + MMR (`diversity=0.5`) |
+| Embedding generation (one-time) | ~26 minutes for a 15,000-row batch at `batch_size=32` |
+| Cached reload time | ~1 second (vs. tens of minutes to regenerate) |
+| **Average end-to-end query latency** | **~0.88 s/query** (5 example queries: 4.4s total) |
+| Retrieval method | Semantic search — cosine similarity via FAISS |
 
-> **What "~0.88s/query" actually includes:** query encoding, FAISS retrieval, metadata lookup, batched keyword extraction, batched summarization, and result assembly — **not just vector search**. FAISS search itself is only a few milliseconds even across the full 50,000-vector index; the two neural-inference-heavy enrichment steps (DistilBART, KeyBERT/MMR) account for the great majority of per-query latency. This is a deliberate framing choice: it would be misleading to report only the FAISS search time and call it "search latency" when the actual user-facing response includes two additional model inference passes.
+**Where the ~0.88 seconds actually goes.** The FAISS search step itself is a tiny fraction of total latency — typically a few milliseconds, even across the full 50,000-vector index. The great majority of per-query time is attributable to the two neural-inference-heavy enrichment steps, DistilBART summarization and KeyBERT/MMR keyword extraction — **not** to vector search itself. This measurement includes the *entire* pipeline: query encoding, FAISS retrieval, keyword extraction, summarization, and response assembly, not just the vector-search component.
 
----
-
-## 🔭 Future Improvements / Roadmap
-
-- **Cross-encoder reranking** — rescore the FAISS-retrieved top-K with a cross-encoder for higher precision before enrichment (see [Bi-Encoder vs. Cross-Encoder](#-engineering-decisions)).
-- **Hybrid search** — combine dense semantic retrieval with sparse lexical matching (e.g. BM25), so exact technical terms, model names, and acronyms a dense embedding might under-weight are still matched precisely.
-- **Full RAG-style answer synthesis** — feed retrieved abstract content directly into the agent's context for open-ended, multi-paper question answering, beyond per-paper summarization.
-- **Streaming responses** — stream the agent's final answer token-by-token instead of waiting for full synthesis.
-- **Approximate nearest-neighbor indexes** — migrate from `IndexFlatIP` to a clustered/approximate index (e.g. `IndexIVFFlat`) if the corpus scales into the millions.
-- **GPU inference improvements** — pipeline-parallelize summarization and keyword extraction rather than running them sequentially within a query.
-- **Query-level caching** — cache repeated/near-duplicate query results to cut latency further for popular queries.
-- **Formal evaluation metrics** — recall@k / NDCG for retrieval quality, ROUGE for summarization quality, replacing the current qualitative spot-check validation.
-- **🧭 AI Concept Explorer** *(planned)* — contextual, on-demand explanations of extracted technical terms (e.g. *"Transformer" → "Attention-based neural architecture..."*), so users can understand unfamiliar ML terminology without leaving the app. This is on the roadmap, not yet part of the implemented pipeline.
-- **Token-accurate summarization bounds** — replace the current word-count approximation with a tokenizer-based (`AutoTokenizer.encode`) length calculation for applications where the approximation's imprecision matters more than it does today.
+**Current bottleneck, explicitly identified:** the enrichment steps dominate per-query latency, not retrieval — and FAISS's current exact/brute-force strategy, while fast enough at 50,000 vectors, is the component explicitly flagged as needing to change (to an approximate/clustered index) if the corpus scales by orders of magnitude.
 
 ---
 
-## 🗂️ Folder Structure
+## Future Improvements
+
+A few capabilities that often show up on a search-engine "roadmap" are already built here — GPU-accelerated inference, disk caching, and LLM-grounded answer synthesis are all live in the current system (see [AI Agent Workflow](#ai-agent-workflow) and [Performance Optimizations](#performance-optimizations)). The genuinely open directions are:
+
+- **Cross-encoder re-ranking** — add a second-stage cross-encoder over the bi-encoder's initial top-k candidates for higher-precision final ranking (see the [bi-encoder vs. cross-encoder note](#engineering-decisions)).
+- **Hybrid search** — combine lexical scoring (BM25) with dense retrieval, so exact-term matches (model names, author names, acronyms) aren't solely at the mercy of embedding similarity.
+- **Approximate ANN indexing at scale** — swap `IndexFlatIP` for `IndexIVFFlat` (or HNSW) if the corpus grows toward millions of papers, per the scale threshold already identified in [Decision 7.4](#engineering-decisions).
+- **Streaming responses** — stream the agent's final-answer tokens back to the caller instead of waiting for full completion, for a more responsive conversational feel.
+- **Query-result caching** — cache repeated or near-duplicate queries' *final answers* (distinct from the existing embedding/index cache), to skip redundant summarization/extraction work entirely.
+- **Multi-turn conversational memory** — let the agent reference earlier turns in a session ("now show me more like the third one") instead of treating every question independently.
+- **Full-corpus scale-up** — extend beyond the current 50,000-paper sample toward the full `cs.LG` category or additional ArXiv categories, which is precisely the scenario that would trigger the approximate-index migration above and the Arrow-batched `.map()` fix noted in [Challenge 8.13](#engineering-challenges).
+
+---
+
+## Folder Structure
 
 ```mermaid
-flowchart TD
-    ROOT["📁 fanite/"]
-    ROOT --> NB["📁 notebooks/"]
-    NB --> NB1["📓 EDA.ipynb<br/><i>data load · cleaning · embedding generation</i>"]
-    NB --> NB2["📓 Search_Engine.ipynb<br/><i>FAISS · search · summarize · keywords</i>"]
-    NB --> NB3["📓 RAG_Pipeline.ipynb<br/><i>LangChain agent · Groq · tools</i>"]
+graph TD
+    Root["📦 neural-arxiv/"]
+    Root --> NB1["📓 EDA.ipynb<br/>data load, cleaning, embedding generation, caching"]
+    Root --> NB2["📓 Search_Engine.ipynb<br/>FAISS indexing, search, summarization, keywords"]
+    Root --> NB3["📓 RAG_Pipeline.ipynb<br/>LangChain tools, Groq agent, natural-language chat"]
+    Root --> SRC["📁 src/"]
+    SRC --> SEARCHPY["🐍 search.py<br/>ArxivSearchEngine class"]
+    Root --> DATA["📁 data/"]
+    DATA --> CSV["📄 cleaned_arxiv_papers.csv"]
+    DATA --> EMB["🧮 arxiv_embeddings.npy"]
+    DATA --> IDX["🗂️ paper_faiss.index"]
+    Root --> DOCS["📁 docs/"]
+    DOCS --> CHAL["📝 Challenges.md<br/>full debugging-story writeups"]
+    DOCS --> ASSETS["🖼️ assets/ (banner, demo, screenshots)"]
+    Root --> ENVFILE["🔐 .env.example"]
+    Root --> GITIGNORE["🚫 .gitignore"]
+    Root --> REQS["📋 requirements.txt"]
+    Root --> RDM["📘 README.md"]
 
-    ROOT --> SRC["📁 src/"]
-    SRC --> SRC1["🐍 search.py<br/><i>ArxivSearchEngine class</i>"]
-
-    ROOT --> DATA["📁 data/  (gitignored / Git LFS)"]
-    DATA --> D1["📄 cleaned_arxiv_papers.csv"]
-    DATA --> D2["🧮 arxiv_embeddings.npy"]
-    DATA --> D3["🗂️ paper_faiss.index"]
-
-    ROOT --> IMG["📁 images/"]
-    IMG --> I1["🖼️ banner.png"]
-    IMG --> I2["🎥 demo.gif"]
-
-    ROOT --> ENV["🔐 .env  (GROQ_API_KEY, gitignored)"]
-    ROOT --> REQ["📋 requirements.txt"]
-    ROOT --> GI["🚫 .gitignore"]
-    ROOT --> RM["📖 README.md"]
-    ROOT --> LIC["⚖️ LICENSE"]
-
-    style ROOT fill:#1f6feb,stroke:#58a6ff,color:#fff
+    style Root fill:#1f2937,stroke:#60a5fa,color:#fff
 ```
 
-> ℹ️ **Note:** `data/` files are intentionally excluded from version control (see the [Git large-file challenge](#-engineering-challenges)) — regenerate them locally by running the notebooks in order, or fetch them via Git LFS / a release artifact if you've configured one.
-
-
----
-
-## 🖼️ Screenshots
-
-> Replace these placeholders with real captures once the app/UI (or notebook output) is finalized.
-
-| Semantic Search Results | Agent Conversation |
-|---|---|
-| `images/screenshot-search.png` | `images/screenshot-agent.png` |
-| *Top-K papers with score, title, summary, and keywords* | *Natural-language question → grounded, cited agent answer* |
+> This tree reflects the components named throughout the project's own documentation. Adjust paths to match your actual repository layout.
 
 ---
 
-## ⚙️ Installation
+## Screenshots
 
-**Requirements:** Python 3.10+, and — if you want GPU-accelerated inference — a CUDA-capable GPU with a matching PyTorch build (Fanite runs correctly on CPU-only machines too, just slower).
+<!-- 🖼️ SCREENSHOT PLACEHOLDERS — replace each with a real capture -->
+
+<div align="center">
+
+| Direct pipeline output (notebook) | Agent-mediated chat |
+|:---:|:---:|
+| <img src="docs/assets/screenshot-direct-pipeline.png" alt="Direct pipeline output" width="380"/> | <img src="docs/assets/screenshot-agent-chat.png" alt="Agent chat output" width="380"/> |
+
+| FAISS index build / caching log | Keyword extraction sample output |
+|:---:|:---:|
+| <img src="docs/assets/screenshot-indexing-log.png" alt="Indexing log" width="380"/> | <img src="docs/assets/screenshot-keywords.png" alt="Keyword extraction output" width="380"/> |
+
+</div>
+
+---
+
+## Installation
+
+### Prerequisites
+
+- Python **3.10+**
+- ~2GB free disk (model weights + cached embeddings/index)
+- A [Groq API key](https://console.groq.com/) (free tier) — only required for the agent pipeline (`RAG_Pipeline.ipynb`); the direct pipeline needs no external API
+- An NVIDIA GPU is optional — the project detects CUDA automatically and falls back to CPU
+
+### 1. Clone the repository
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/<your-username>/fanite.git
-cd fanite
+git clone https://github.com/your-username/neural-arxiv.git
+cd neural-arxiv
+```
 
-# 2. Create and activate a virtual environment
+### 2. Create and activate a virtual environment
+
+```bash
 python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+source venv/bin/activate      # macOS / Linux
+venv\Scripts\activate         # Windows
+```
 
-# 3. Install core dependencies
+### 3. Install dependencies
+
+```bash
 pip install -r requirements.txt
-
-# 4. Install the keyphrase extraction stack (spaCy model download required separately)
-pip install keyphrase-vectorizers spacy
 python -m spacy download en_core_web_sm
-
-# 5. Configure your Groq API key (used by the LangChain agent)
-cp .env.example .env
-# then edit .env and set:
-# GROQ_API_KEY=your_key_here
 ```
 
 <details>
-<summary><b>requirements.txt (core dependencies)</b></summary>
+<summary><strong>What's in <code>requirements.txt</code></strong></summary>
+
+<br/>
 
 ```text
-datasets
-pandas
-numpy
-torch
 sentence-transformers
-faiss-cpu          # or faiss-gpu if you have a compatible CUDA setup
+faiss-cpu          # swap for faiss-gpu if you have a CUDA build available
 transformers
-scikit-learn
+torch
+datasets
 keybert
 keyphrase-vectorizers
 spacy
-python-dotenv
+scikit-learn
+pandas
+numpy
 langchain
-langchain-core
 langchain-groq
+python-dotenv
+jupyterlab
 ```
+
+Pin exact versions from your working environment before publishing (`pip freeze > requirements.txt`) — versions are intentionally left unpinned above since they depend on your CUDA/PyTorch setup.
 </details>
 
-Get a free Groq API key at [console.groq.com](https://console.groq.com) — this powers the agent's reasoning layer (`llama-3.1-8b-instant`); no OpenAI/commercial LLM key is required anywhere in this project.
+### 4. Configure environment variables
+
+```bash
+cp .env.example .env
+```
+
+```text
+# .env
+GROQ_API_KEY=your_groq_api_key_here
+```
+
+The agent pipeline reads this via `python-dotenv`; the direct (non-agent) pipeline works without it.
 
 ---
 
-## ▶️ Running the Project
+## Running the Project
 
-Run the notebooks **in order** — each stage depends on cached artifacts produced by the one before it:
+Run the three notebooks **in order** — each depends on artifacts produced by the previous one:
 
-```bash
-# 1. Build the corpus + embeddings (multi-tens-of-minutes on first run, cached afterward)
-jupyter notebook notebooks/EDA.ipynb
-
-# 2. Build the FAISS index and validate search / summarization / keyword extraction
-jupyter notebook notebooks/Search_Engine.ipynb
-
-# 3. Run the LangChain + Groq agent end-to-end
-jupyter notebook notebooks/RAG_Pipeline.ipynb
+```mermaid
+flowchart LR
+    A["1️⃣ EDA.ipynb<br/>builds and caches embeddings + FAISS index"] --> B["2️⃣ Search_Engine.ipynb<br/>test direct retrieval + summarization + keywords"]
+    B --> C["3️⃣ RAG_Pipeline.ipynb<br/>chat with the LangChain + Groq agent"]
 ```
 
-**Programmatic usage (direct pipeline, no agent):**
+1. **`EDA.ipynb`** — run top to bottom first. This loads the dataset, cleans it, samples it, generates embeddings, and caches both the embeddings (`data/arxiv_embeddings.npy`) and the cleaned CSV (`data/cleaned_arxiv_papers.csv`) to disk. **This step takes the longest** (tens of minutes, uncached) — subsequent runs will find the cache and skip recomputation.
+2. **`Search_Engine.ipynb`** — run once step 1's cache exists. Builds (or loads) the FAISS index, and exposes `getrelevant_papers(query, k=5)` for direct, non-agent search + summarization + keyword extraction.
+3. **`RAG_Pipeline.ipynb`** — run once your `.env` has a valid `GROQ_API_KEY`. Imports `ArxivSearchEngine` from `src/search.py`, binds the two `@tool`-decorated functions to a `create_agent(...)` agent, and lets you ask natural-language questions:
 
 ```python
-from src.search import ArxivSearchEngine
-
-searcher = ArxivSearchEngine(data_dir="data")
-results = searcher.search("deep learning for medical image analysis", k=5)
-# → list of dicts: {"score": ..., "title": ..., "summary": ..., "Keywords": [...]}
-```
-
-**Agent usage (natural language):**
-
-```python
-from langchain.agents import create_agent
-from langchain_groq import ChatGroq
-# ... build llm, tools, SYSTEM_PROMPT as in RAG_Pipeline.ipynb ...
-
-agent = create_agent(model=llm, tools=[search_and_summarize, extract_keywords], system_prompt=SYSTEM_PROMPT)
-
 response = agent.invoke({
-    "messages": [{"role": "user", "content": "Find the top 3 research papers on Vision Transformer and summarize them."}]
+    "messages": [{"role": "user", "content": "Find the top 3 papers on Vision Transformers and summarize them."}]
 })
 print(response["messages"][-1].content)
 ```
 
 ---
 
-## 📈 Results
+## Results
 
-Fanite's pipeline correctness was validated across a mix of direct-pipeline queries — covering topics such as transformer architectures, diffusion models, and reinforcement learning for robotics — and agent-mediated natural-language queries designed to exercise both tools, e.g.:
+### Validated agent behavior
 
-- *"Find the top 3 research papers on Vision Transformer and summarize them."* → routes to `search_and_summarize`
-- *"What are the main keywords and topics in deep learning for medical imaging?"* → routes to `extract_keywords`
+The two test queries used to validate the agent's tool-selection reasoning (see [Prompt Engineering](#prompt-engineering)) confirm the system routes on *intent*, not on keyword-spotting a single trigger word:
 
-Every result — from either entry point — follows the same enriched output schema:
+| Query | Tool invoked | What it demonstrates |
+|---|---|---|
+| *"Find the top 3 research papers on Vision Transformer and summarize them."* | `search_and_summarize` | "find… summarize" phrasing correctly maps to the summarization path |
+| *"What are the main keywords and topics in deep learning for medical imaging?"* | `extract_keywords` | "keywords and topics" phrasing correctly maps to the extraction path, with no explicit rule hardcoded on those exact words |
 
-```json
-{
-  "score": 0.7421,
-  "title": "<retrieved paper title>",
-  "summary": "<DistilBART-generated summary of the abstract>",
-  "Keywords": [
-    ["<keyphrase 1>", 0.62],
-    ["<keyphrase 2>", 0.58],
-    "... up to 10 diversified keyphrases via MMR"
-  ]
-}
+### Result object shape (direct pipeline)
+
+Every call to `getrelevant_papers(query, k)` returns a list of `k` dicts shaped like this:
+
+```python
+[
+    {
+        "score": 0.7423,              # cosine similarity, FAISS-sorted descending
+        "title": "<paper title>",
+        "summary": "<DistilBART-generated abstractive summary>",
+        "Keywords": [
+            ("<keyphrase 1>", 0.61),
+            ("<keyphrase 2>", 0.57),
+            # ... up to 10, MMR-diversified
+        ],
+    },
+    # ... k-1 more results
+]
 ```
 
-> 📸 *Insert a real captured example (screenshot or copy-pasted output) here once you have one — placeholder shown above reflects the verified output schema, not a specific run.*
+### Benchmark summary
 
-Measured performance held at **~0.88 seconds per query end-to-end** (see [Performance Metrics](#-performance-metrics)) across the validation queries, with FAISS retrieval itself contributing only a small fraction of that time.
+Full numbers and latency breakdown are in [Performance Metrics](#performance-metrics) — headline figure: **~0.88 seconds per query**, end to end, across a 50,000-paper index.
 
-
----
-
-## 🎓 Lessons Learned
-
-**On debugging:** the single dominant lesson from building Fanite is *never trust that a third-party API's output shape is invariant across different inputs*. KeyBERT changes its return nesting based on batch size; the Hugging Face summarizer pipeline changes its return shape based on single-item vs. batched calls. Both were only correctly diagnosed by explicit type inspection, not assumption — and a fix aimed at the wrong mechanism (the `stop_words=None` keyword-quality attempt) only got corrected by testing the underlying library call in isolation instead of guessing.
-
-**On ML engineering:** correctness in a retrieval pipeline depends on **positional alignment** holding end-to-end — a DataFrame index, a NumPy embeddings array, and a FAISS index all have to agree on what "row 17" means, and any row-dropping operation silently breaks that unless explicitly repaired with `reset_index(drop=True)`. The same "batch of N, even when N=1" assumption shows up everywhere in vectorized ML APIs — FAISS, scikit-learn's `cosine_similarity`, sentence-transformers' `.encode()` — and needs to be handled consistently rather than special-cased per call site.
-
-**On data pipelines:** deterministic-looking operations can hide real bias — `.head(50000)` on date-ordered ArXiv IDs looked reasonable until it wasn't; genuinely random sampling with a fixed seed is both more statistically sound *and* still fully reproducible, which matters wherever downstream artifacts are cached against a specific sample.
-
-**On the notebook execution model:** interactive kernels retain live state independently of what's visible in the editor. A function object already bound in kernel memory does not pick up a source-code edit until its defining cell is re-executed — a distinction that cost real debugging time until it was understood, and one every notebook-based ML workflow eventually runs into.
-
-**On library edge cases:** not every warning indicates a bug (the Windows symlink cache warning was purely informational), and not every warning should be silenced without investigation (the "sequential pipeline calls on GPU" warning pointed at a real, traceable inefficiency once the actual `transformers` source was read instead of just the warning text). Telling these apart is its own debugging skill.
-
-**On production thinking:** Fanite repeatedly distinguishes "fix this now" from "real concern, not urgent yet, here's the plan" — the Arrow memory-mapping tradeoff of `.to_pandas()` is explicitly flagged as fine at the current ~50K-document scale, with a concrete, already-designed fix (`datasets`' batched `.map()`) documented for if the corpus ever grows 50–100x.
-
-**On optimization and tradeoffs:** almost nothing in this project was a free win. Batching abstracts for summarization means longer abstracts in a batch get capped by the shortest one's bounds; caching embeddings to disk avoided a 26-minute recomputation but created its own downstream problem — the GitHub large-file saga — a good reminder that fixing one problem (compute cost) can quietly create another (repo hygiene) if the consequences aren't traced all the way through.
-
-**On version control:** Git tracks history, not current state. Deleting a file and adding it to `.gitignore` does nothing to already-committed history — and the *correct* remediation depends entirely on who else depends on that history, with no single universal fix that applies regardless of collaboration context.
+> 📸 Swap in real captured output here once you have it — see [Screenshots](#screenshots) for placeholder slots for an actual notebook run and agent chat transcript.
 
 ---
 
-## 🙌 Credits
+## Lessons Learned
 
-- **Dataset:** [`CShorten/ML-ArXiv-Papers`](https://huggingface.co/datasets/CShorten/ML-ArXiv-Papers) on Hugging Face.
-- **Embedding model:** [`sentence-transformers/all-MiniLM-L6-v2`](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2).
-- **Summarization model:** [`sshleifer/distilbart-cnn-12-6`](https://huggingface.co/sshleifer/distilbart-cnn-12-6).
-- **Keyphrase extraction:** [KeyBERT](https://github.com/MaartenGr/KeyBERT) and [KeyphraseVectorizers](https://github.com/TimSchopf/KeyphraseVectorizers).
-- **Vector search:** [FAISS](https://github.com/facebookresearch/faiss) by Meta AI.
-- **Agent orchestration:** [LangChain](https://github.com/langchain-ai/langchain).
-- **LLM inference:** [Groq](https://groq.com) (`llama-3.1-8b-instant`).
-- Built and documented by **`<your name / handle here>`** — *replace with your own attribution.*
+**On debugging.** The dominant lesson, repeated across multiple distinct bugs: *never trust that a third-party API's output shape is invariant across different inputs.* KeyBERT changes its return nesting based on batch size ([8.1](#engineering-challenges)); the Hugging Face summarizer pipeline changes its return shape based on single-item vs. batched input ([8.4](#engineering-challenges)) — both were only correctly diagnosed by explicit `type()`/`print()` introspection, never by assumption. A second recurring lesson: *investigate the actual mechanism before applying a fix* — the `stop_words=None` bug ([8.6](#engineering-challenges)) was only correctly resolved by testing `CountVectorizer` behavior directly, which revealed the original fix's premise was wrong to begin with.
+
+**On ML engineering.** Correctness in an embedding/retrieval pipeline depends on **positional alignment** holding end to end — a DataFrame index, a NumPy embeddings array, and a FAISS index must all agree on what "row 17" means, and any row-dropping operation silently breaks that alignment unless explicitly repaired with `reset_index(drop=True)` ([8.11](#engineering-challenges)). Similarly, `cosine_similarity`-family functions and FAISS both treat "batches" as their fundamental unit, even for a single item ([8.10](#engineering-challenges)) — a pattern that shows up across vectorized ML APIs generally, not just here.
+
+**On tooling.** Interactive notebook kernels retain live state across cell executions, independent of the source code visible in the editor — a function object already bound in kernel memory does not automatically pick up a source edit until its defining cell is re-run ([8.1](#engineering-challenges)). Library warnings should be traced to their actual source rather than reflexively suppressed — the "sequential pipeline calls on GPU" warning ([8.3](#engineering-challenges)) led to reading the real `transformers` source and understanding a genuine performance issue, not just quieting a message.
+
+**On notebook execution & reproducibility.** Deterministic-looking operations can hide real bias — `.head(50000)` on date-ordered IDs ([8.8](#engineering-challenges)) — while genuinely random sampling with a fixed seed is both more statistically sound *and* still fully reproducible, which matters whenever downstream artifacts (cached embeddings, a built FAISS index) are keyed to a specific sample's exact contents.
+
+**On production thinking.** The project repeatedly distinguishes "fix this now" from "this is a real but not-yet-triggered concern — document the plan." The Arrow memory-mapping tradeoff of `.to_pandas()` ([8.13](#engineering-challenges)) is explicitly flagged as fine at current scale, with a concrete, already-designed fix for when the corpus grows 50–100×, rather than either ignoring it or over-engineering a fix nobody needs yet.
+
+**On software engineering & architecture.** Keeping the **agent LLM** (general reasoning, tool selection, hosted via Groq) strictly separate from **tool-backend models** (DistilBART, KeyBERT — narrow, specialized, local) is treated as a first-class architectural principle, not an implementation detail — including the explicit removal of an earlier design that blurred this line ([8.14](#engineering-challenges)). Modularizing stable retrieval logic into `src/search.py` only once it stopped changing, while keeping actively-iterated logic inline in notebooks, reflects an "extract once it's stable, not before" philosophy.
+
+**On optimization & tradeoffs.** Almost every optimization here came with an explicit, acknowledged tradeoff rather than being a free win — batching abstracts for summarization means longer abstracts in a batch get capped by the shortest abstract's bounds ([Performance Optimizations](#performance-optimizations)); caching embeddings/index to disk means those artifacts are scoped to a specific sample/model version, and they created their own downstream problem — the GitHub large-file saga ([8.2](#engineering-challenges)). A fix for one problem (compute cost) can create a new one (repo hygiene) if its consequences aren't also considered.
+
+**On Git & version control.** Git tracks history, not current state — deleting a file and adding it to `.gitignore` does nothing to remove it from already-committed history ([8.2](#engineering-challenges)), and the *correct* remediation depends entirely on who else depends on that history: solo/unpushed → simple reset; solo/pushed → history rewrite is safe; shared/forked → history rewrite is dangerous and needs coordination, or should be avoided via Git LFS instead.
 
 ---
 
-## ⚖️ License
+## Credits
 
-This project is licensed under the **MIT License** — see [`LICENSE`](LICENSE) for details.
+**Dataset:** [`CShorten/ML-ArXiv-Papers`](https://huggingface.co/datasets/CShorten/ML-ArXiv-Papers) on the Hugging Face Hub.
+
+**Core libraries this project stands on:** [sentence-transformers](https://www.sbert.net/) & [`all-MiniLM-L6-v2`](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2) · [FAISS](https://github.com/facebookresearch/faiss) (Meta AI Research) · [Hugging Face Transformers](https://github.com/huggingface/transformers) & [DistilBART](https://huggingface.co/sshleifer/distilbart-cnn-12-6) · [KeyBERT](https://github.com/MaartenGr/KeyBERT) · [KeyphraseVectorizers](https://github.com/TimSchopf/KeyphraseVectorizers) · [spaCy](https://spacy.io/) · [LangChain](https://github.com/langchain-ai/langchain) · [Groq](https://groq.com/).
+
+**Author**
+
+Built by **Aayush** — B.Tech Electrical Engineering, Netaji Subhas University of Technology (NSUT), Delhi.
+
+[GitHub](https://github.com/your-username) · [LinkedIn](https://linkedin.com/in/your-handle) · [Email](mailto:your.email@example.com)
+
+*Replace the placeholder links above with your real profiles.*
+
+---
+
+## License
+
+This project is licensed under the **MIT License**.
+
+<details>
+<summary>Show full license text</summary>
+
+<br/>
+
+```text
+MIT License
+
+Copyright (c) 2026 Aayush
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+</details>
 
 <div align="center">
-<br/>
-
-**"Search by meaning, not by keywords."**
-
-*This philosophy forms the core of Fanite.*
 
 <br/>
 
-⭐ If this project helped you understand semantic search or agentic RAG systems, consider starring the repo.
+**If this project helped you understand embedding-based search, agentic tool-calling, or just gave you a good debugging story to steal for an interview — a ⭐ is always appreciated.**
 
 </div>
