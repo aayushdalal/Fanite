@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🔭 ArXiv Semantic Search Engine
+# Fanite – AI-Powered Semantic Research Paper Search Engine
 ### Agentic RAG over Machine Learning Research Papers
 
 *From a raw 117K-row HuggingFace dataset to a tool-calling LLM agent that finds, summarizes, and*
