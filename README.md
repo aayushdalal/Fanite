@@ -47,12 +47,8 @@
 
 </div>
 
-<p align="center">
-  <img src="docs/assets/demo.gif" alt="Animated demo of a query flowing through retrieval, summarization, and keyword extraction">
-</p>
-<p align="center"><sub>🎬 <strong>Placeholder</strong> — animated GIF of a live query. Suggested capture: run the agent trace cell in <code>RAG_Pipeline.ipynb</code> and screen-record the tool-call log streaming in.</sub></p>
 
-<p align="center"><sub>📸 Screenshots and a hosted demo link go here once the project has a UI — see <a href="#-screenshots">Screenshots</a> below for exactly what to capture.</sub></p>
+<!-- <p align="center"><sub>📸 Screenshots and a hosted demo link go here once the project has a UI — see <a href="#-screenshots">Screenshots</a> below for exactly what to capture.</sub></p> -->
 
 ---
 ## 🎯 Motivation to build this project : 
