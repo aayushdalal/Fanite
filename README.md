@@ -130,16 +130,24 @@ flowchart TD
 
 **Reading the diagram, stage by stage:**
 
-| Stage | What happens | Where |
-|---|---|---|
-| Dataset → EDA | Load `CShorten/ML-ArXiv-Papers` via  `datasets`, inspect shape, columns, and null counts | `EDA.ipynb` |
-| Cleaning | Drop index-artifact columns, deduplicate on `abstract`, reproducibly sample 50,000 rows | `EDA.ipynb` |
-| Embedding Generation | Encode `paper_text` with MiniLM, cache to disk so it never runs twice | `EDA.ipynb` |
-| Vector Database | L2-normalize and load into a `faiss.IndexFlatIP`, cache the index | `Search_Engine.ipynb` |
-| Search Engine | Refactored into an importable `ArxivSearchEngine` class | `src/search.py` |
-| Agent Workflow | A LangChain tool-calling agent decides which tool(s) to invoke | `RAG_Pipeline.ipynb` |
-| Keyword Extraction / Summarizer | Tool backends invoked by the agent, never the agent's "brain" itself | `RAG_Pipeline.ipynb` |
-| Final Response | The agent LLM synthesizes tool output into one grounded, cited answer | `RAG_Pipeline.ipynb` |
+| Stage                               | What actually happens                                                                                                                                                                                                                | Where                                        |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------- |
+| **1. Dataset & EDA**                | Load the **`CShorten/ML-ArXiv-Papers`** dataset using Hugging Face `datasets`, inspect schema, missing values, duplicates, and overall data quality before building the retrieval pipeline.                                          | `EDA.ipynb`                                  |
+| **2. Data Cleaning**                | Remove index-artifact columns, drop duplicate abstracts, reset the DataFrame index, and reproducibly sample **50,000** papers for experimentation. Resetting the index ensures every FAISS index maps directly to `df.iloc[idx]`.    | `EDA.ipynb`                                  |
+| **3. Embedding Generation**         | Encode every paper using **SentenceTransformer MiniLM**, producing one **384-dimensional embedding** per paper. Embeddings are cached to disk (`arxiv_embeddings.npy`) so this expensive step never runs twice.                      | `EDA.ipynb`                                  |
+| **4. Vector Database Construction** | L2-normalize every embedding and build a **`faiss.IndexFlatIP`** index. The normalized vectors are cached as `paper_faiss.index`, enabling cosine similarity through inner-product search.                                           | `Search_Engine.ipynb`                        |
+| **5. Search Engine Initialization** | Load the cached embeddings, FAISS index, and metadata into an importable **`ArxivSearchEngine`** class that serves as the project's retrieval backend.                                                                               | `src/search.py`                              |
+| **6. User Query**                   | A user enters a natural-language query (e.g., *"Deep learning in medical science"*). No manual preprocessing is applied beyond the model's tokenizer.                                                                                | `Search_Engine.ipynb` / `RAG_Pipeline.ipynb` |
+| **7. Query Encoding**               | The query is encoded using MiniLM as `model.encode([query])`. Wrapping the query in a list ensures a **(1, 384)** batch embedding, which FAISS expects for similarity search.                                                        | `src/search.py`                              |
+| **8. L2 Normalization**             | The query embedding is normalized using `faiss.normalize_L2()`, matching the normalization applied to every stored paper embedding so that inner-product search becomes cosine similarity.                                           | `src/search.py`                              |
+| **9. Semantic Retrieval**           | `index.search(query_embedding, k)` returns the **top-k** most semantically similar papers. FAISS produces two aligned arrays: **`D`** (cosine similarity scores) and **`I`** (row indices), already sorted in descending similarity. | `src/search.py`                              |
+| **10. Metadata Lookup**             | Each retrieved index is resolved using `df.iloc[idx]` to recover the paper title, abstract, and metadata. The abstract word count is also computed for dynamic summarization lengths.                                                | `src/search.py`                              |
+| **11. Keyword Extraction**          | All retrieved abstracts are processed in **one batched call** using **KeyBERT + KeyphraseCountVectorizer + MMR**, producing diverse, document-specific research keyphrases.                                                          | `RAG_Pipeline.ipynb`                         |
+| **12. Summary Generation**          | The retrieved abstracts are summarized together in **one batched DistilBART inference**, using dynamically computed `min_length` and `max_length` values for each paper.                                                             | `RAG_Pipeline.ipynb`                         |
+| **13. Response Assembly**           | Similarity scores, titles, summaries, and extracted keyphrases are merged into one structured Python object representing the retrieved papers.                                                                                       | `src/search.py`                              |
+| **14. Agent Orchestration**         | A LangChain **tool-calling agent** analyzes the user's intent and automatically decides whether to invoke **`search_and_summarize`**, **`extract_keywords`**, or both.                                                               | `RAG_Pipeline.ipynb`                         |
+| **15. Final Grounded Response**     | The LLM synthesizes the tool outputs into a single natural-language response, grounded entirely in retrieved papers and their extracted information—without hallucinating external content.                                          | `RAG_Pipeline.ipynb`                         |
+
 
 > [!NOTE]
 > The diagram intentionally shows **one** agent branching into **two** tools, not five independent agents. That's not a simplification for the diagram — it's the actual architecture. See [AI Agent Workflow](#-ai-agent-workflow) for why that distinction matters and how the five conceptual responsibilities (query understanding, retrieval, keyword extraction, summarization, response assembly) map onto it.
@@ -332,6 +340,42 @@ Rules:
 **How hallucination is reduced, end to end:** the defense is layered, not a single prompt line. Retrieval only returns real, indexed papers (the LLM never sees a paper it wasn't given). Summaries are generated *from* the retrieved abstract text, not from the model's own knowledge. And the system prompt's grounding rule is the last line of defense against the model blending its own background knowledge with the retrieved evidence when writing the final answer.
 
 ---
+## ⚙️ Performance Optimizations
+
+| Optimization | Problem it solves | Impact |
+|---|---|---|
+| **Precomputed, cached embeddings** | Encoding 50,000 papers takes real wall-clock time | A one-time cost, paid once; every subsequent notebook run loads a `.npy` file instead of recomputing — see [Engineering Challenges](#-engineering-challenges) for the exact before/after |
+| **Cached FAISS index** | Rebuilding an index from scratch is unnecessary if the corpus hasn't changed | `faiss.write_index` / `faiss.read_index` with the same `os.path.exists()` guard pattern used for embeddings |
+| **`IndexFlatIP` at this scale** | Approximate indexes trade recall for speed — a trade this corpus size doesn't need to make yet | 100% recall, sub-millisecond search over 50,000 vectors |
+| **MiniLM over a larger embedding model** | Bigger models mean slower encoding and a larger in-memory matrix | ~73MB for the full embedding matrix at 384-dim, versus roughly double at 768-dim |
+| **DistilBART over `bart-large-cnn`** | Full BART's decoder depth dominates generation latency | 300MB vs. 1.6GB model size; 6 decoder layers instead of 12 halves the cost of every autoregressive generation step |
+| **Batch summarization** | One model call per retrieved paper repeats fixed overhead *k* times | A single batched call absorbs that overhead once per query instead of once per paper |
+| **Batch keyword extraction** | Same overhead problem, different model | One `extract_keywords()` call across all retrieved abstracts, not one per abstract |
+| **`KeyphraseCountVectorizer` over raw n-grams** | Low-quality candidates waste ranking effort on phrases that were never going to be good keywords | 25 high-quality candidates to rank instead of 223 mostly-noise ones — less work, better output |
+| **Metadata lookup via `iloc`, not a search or join** | Mapping a FAISS row index back to a title/abstract needs to be effectively free | O(1) positional lookup, made correct by the `reset_index(drop=True)` alignment discipline described in [Engineering Decisions](#-engineering-decisions) |
+| **Notebook modularization** | Loading every model (embedder, summarizer, keyword extractor, agent LLM client) into one session risks OOM and slow, all-or-nothing kernel restarts | Each notebook only loads what its own concern needs — see [Engineering Decisions](#-engineering-decisions) |
+
+---
+
+## 📊 Performance Metrics
+
+| Metric | Value |
+|---|---|
+| Corpus size | 50,000 papers (sampled from 117,592, `random_state=42`) |
+| Embedding dimension | 384 (`all-MiniLM-L6-v2`) |
+| Embedding matrix size | `(50000, 384)`, `float32` (~73 MB) |
+| FAISS index type | `IndexFlatIP` (exact search, 100% recall) |
+| Top-k retrieval |  (configurable per call) |
+| Summarizer | `sshleifer/distilbart-cnn-12-6`, batched, GPU-accelerated |
+| Keyword model | KeyBERT + `KeyphraseCountVectorizer`, MMR diversity 0.5 |
+| Dev/test hardware | NVIDIA GeForce RTX 3050 Laptop GPU |
+| **Average end-to-end latency** | **≈ 0.88 seconds / query** |
+| Measured batch | 5 queries completed in ≈ 4.4 seconds total |
+
+> [!IMPORTANT]
+> The ≈0.88s figure is **end-to-end**: query encoding, FAISS retrieval, keyword extraction, summarization, and response assembly combined — not vector search in isolation. Vector search over 50,000 exact `IndexFlatIP` vectors is a small fraction of that budget; DistilBART's batched generation and KeyBERT's candidate ranking are the more expensive stages, which is exactly why [Performance Optimizations](#-performance-optimizations) targets those two the hardest.
+
+---
 
 ## Tools Used
 
@@ -511,43 +555,6 @@ The phrases above were extracted using the project's final keyword extraction pi
 
 ---
 
-## ⚙️ Performance Optimizations
-
-| Optimization | Problem it solves | Impact |
-|---|---|---|
-| **Precomputed, cached embeddings** | Encoding 50,000 papers takes real wall-clock time | A one-time cost, paid once; every subsequent notebook run loads a `.npy` file instead of recomputing — see [Engineering Challenges](#-engineering-challenges) for the exact before/after |
-| **Cached FAISS index** | Rebuilding an index from scratch is unnecessary if the corpus hasn't changed | `faiss.write_index` / `faiss.read_index` with the same `os.path.exists()` guard pattern used for embeddings |
-| **`IndexFlatIP` at this scale** | Approximate indexes trade recall for speed — a trade this corpus size doesn't need to make yet | 100% recall, sub-millisecond search over 50,000 vectors |
-| **MiniLM over a larger embedding model** | Bigger models mean slower encoding and a larger in-memory matrix | ~73MB for the full embedding matrix at 384-dim, versus roughly double at 768-dim |
-| **DistilBART over `bart-large-cnn`** | Full BART's decoder depth dominates generation latency | 300MB vs. 1.6GB model size; 6 decoder layers instead of 12 halves the cost of every autoregressive generation step |
-| **Batch summarization** | One model call per retrieved paper repeats fixed overhead *k* times | A single batched call absorbs that overhead once per query instead of once per paper |
-| **Batch keyword extraction** | Same overhead problem, different model | One `extract_keywords()` call across all retrieved abstracts, not one per abstract |
-| **`KeyphraseCountVectorizer` over raw n-grams** | Low-quality candidates waste ranking effort on phrases that were never going to be good keywords | 25 high-quality candidates to rank instead of 223 mostly-noise ones — less work, better output |
-| **Metadata lookup via `iloc`, not a search or join** | Mapping a FAISS row index back to a title/abstract needs to be effectively free | O(1) positional lookup, made correct by the `reset_index(drop=True)` alignment discipline described in [Engineering Decisions](#-engineering-decisions) |
-| **Notebook modularization** | Loading every model (embedder, summarizer, keyword extractor, agent LLM client) into one session risks OOM and slow, all-or-nothing kernel restarts | Each notebook only loads what its own concern needs — see [Engineering Decisions](#-engineering-decisions) |
-
----
-
-## 📊 Performance Metrics
-
-| Metric | Value |
-|---|---|
-| Corpus size | 50,000 papers (sampled from 117,592, `random_state=42`) |
-| Embedding dimension | 384 (`all-MiniLM-L6-v2`) |
-| Embedding matrix size | `(50000, 384)`, `float32` (~73 MB) |
-| FAISS index type | `IndexFlatIP` (exact search, 100% recall) |
-| Top-k retrieval |  (configurable per call) |
-| Summarizer | `sshleifer/distilbart-cnn-12-6`, batched, GPU-accelerated |
-| Keyword model | KeyBERT + `KeyphraseCountVectorizer`, MMR diversity 0.5 |
-| Dev/test hardware | NVIDIA GeForce RTX 3050 Laptop GPU |
-| **Average end-to-end latency** | **≈ 0.88 seconds / query** |
-| Measured batch | 5 queries completed in ≈ 4.4 seconds total |
-
-> [!IMPORTANT]
-> The ≈0.88s figure is **end-to-end**: query encoding, FAISS retrieval, keyword extraction, summarization, and response assembly combined — not vector search in isolation. Vector search over 50,000 exact `IndexFlatIP` vectors is a small fraction of that budget; DistilBART's batched generation and KeyBERT's candidate ranking are the more expensive stages, which is exactly why [Performance Optimizations](#-performance-optimizations) targets those two the hardest.
-
----
-
 ## 🚀 Future Improvements
 
 A few of the items below overlap with things this project already does in a first form — where that's true, the table says so explicitly rather than listing something as "future work" that's already shipped.
@@ -687,10 +694,11 @@ This behaviour is desirable because the similarity score acts as a confidence in
 - [LangChain](https://github.com/langchain-ai/langchain) for agent orchestration
 - [Hugging Face `transformers`, `datasets`, and `sentence-transformers`](https://huggingface.co/)
 
-**Built by**
-- *AAYUSH DALAL* — designed, built, debugged, and documented the full pipeline from raw dataset to agentic RAG system.
----
+**Author**
 
+Built by **Aayush Dalal** — B.Tech Electrical Engineering, Netaji Subhas University of Technology (NSUT), Delhi.
+
+[GitHub](https://github.com/aayushdalal) · [LinkedIn](https://www.linkedin.com/in/aayush-dalal-a51668190/) · [Email](mailto:aayushdalal321@gmail.com)
 
 
 <div align="center">
