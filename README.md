@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="images/Logo.png"" alt="ArXiv Semantic Search Engine banner" width="100%">
+</p>
+<!-- <p align="center"><sub>🖼️ <strong>Placeholder</strong> — banner image (recommended 1600×400) showing the query → retrieval → agent-response flow. See <a href="#-screenshots">Screenshots</a> for the full asset checklist.</sub></p> -->
+
 <div align="center">
 
 # Fanite – AI-Powered Semantic Research Paper Search Engine
@@ -30,10 +35,6 @@
 
 <br/>
 
-<p align="center">
-  <img src="images/Logo.png"" alt="ArXiv Semantic Search Engine banner" width="100%">
-</p>
-<!-- <p align="center"><sub>🖼️ <strong>Placeholder</strong> — banner image (recommended 1600×400) showing the query → retrieval → agent-response flow. See <a href="#-screenshots">Screenshots</a> for the full asset checklist.</sub></p> -->
 
 <br/>
 
